@@ -7,8 +7,8 @@ To install extra dependencies for development, we need to specify all extras and
 brew install uv
 
 # clone repository
-git clone https://github.com/SakanaAI/treequest.git
-cd treequest
+git clone https://github.com/gamaai/gamaai.git
+cd gamaai
 
 # uv sync creates .venv and insatall all the dependencies
 uv sync --all-extras --all-groups
