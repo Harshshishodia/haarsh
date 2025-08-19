@@ -1,11 +1,10 @@
 [project]
-name = "treequest"
-version = "0.1.2"
-description = "A Tree Search Library with Flexible API for LLM Inference-Time Scaling"
+name = "gamaai"
+version = "0.1.0"
+description = "A Tree Search Library with Flexible API for AI Inference-Time Scaling"
 readme = "README.md"
 authors = [
-    { name = "Kou Misaki", email = "kou.misaki@sakana.ai" },
-    { name = "Takuya Akiba", email = "takiba@sakana.ai" },
+    { name = "Gamaai Team", email = "team@gamaai.ai" },
 ]
 requires-python = ">=3.11"
 dependencies = [
