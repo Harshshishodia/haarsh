@@ -1,0 +1,13 @@
+BEGIN;
+CREATE TABLE IF NOT EXISTS kb_documents (id TEXT PRIMARY KEY, title TEXT NOT NULL, source TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, verified_at TEXT, status TEXT NOT NULL CHECK(status IN ('verified','draft','retired')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(title,version));
+CREATE TABLE IF NOT EXISTS kb_chunks (id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE, chunk_key TEXT NOT NULL UNIQUE, content TEXT NOT NULL, facts_json TEXT NOT NULL DEFAULT '{}', embedding_json TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS eval_cases (id TEXT PRIMARY KEY, suite_id TEXT NOT NULL, language TEXT NOT NULL, input_json TEXT NOT NULL, expected_json TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]', synthetic INTEGER NOT NULL DEFAULT 1 CHECK(synthetic IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS eval_runs (id TEXT PRIMARY KEY, suite_id TEXT NOT NULL, prompt_version TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('running','passed','failed')), total INTEGER NOT NULL DEFAULT 0, passed INTEGER NOT NULL DEFAULT 0, metrics_json TEXT NOT NULL DEFAULT '{}', started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, finished_at TEXT);
+CREATE TABLE IF NOT EXISTS semantic_cache (cache_key TEXT PRIMARY KEY, intent TEXT NOT NULL, language TEXT NOT NULL, response_json TEXT NOT NULL, citations_json TEXT NOT NULL, expires_at TEXT, hit_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS provider_usage (id TEXT PRIMARY KEY, provider TEXT NOT NULL, model TEXT NOT NULL, tier INTEGER NOT NULL, input_units INTEGER NOT NULL DEFAULT 0, output_units INTEGER NOT NULL DEFAULT 0, latency_ms INTEGER, state TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS prompt_releases (id TEXT PRIMARY KEY, component TEXT NOT NULL, version TEXT NOT NULL, content_digest TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('shadow','active','retired')), eval_run_id TEXT REFERENCES eval_runs(id) ON DELETE SET NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(component,version));
+CREATE INDEX IF NOT EXISTS idx_kb_document_status ON kb_documents(status,verified_at);
+CREATE INDEX IF NOT EXISTS idx_eval_cases_suite ON eval_cases(suite_id,language);
+CREATE INDEX IF NOT EXISTS idx_provider_usage_recent ON provider_usage(provider,created_at);
+INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(7,'ai_quality_engine');
+COMMIT;

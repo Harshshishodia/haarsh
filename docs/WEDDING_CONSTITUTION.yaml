@@ -1,0 +1,92 @@
+version: 1
+status: approved
+approved_at: 2026-10-30
+project: WEDDING-OS
+identity: V&D Wedding Concierge
+timezone: Asia/Kolkata
+
+people:
+  couple: [Vaishnavi, Dhruv]
+  hosts: [Sanjeev Shishodia, Anita Shishodia]
+  chief_operator: Harsh
+  backup_admins: pending_private_configuration
+  roles: [admin, family, vendor, guest, bride-view]
+  bride_view: read-only_good-vibes_content_only
+
+wedding:
+  celebration_window: 2027-02-10_to_2027-02-18
+  events:
+    - {name: Sagai, date: 2027-02-12, time: unconfirmed, venue: unconfirmed}
+    - {name: Haldi, date: 2027-02-14, time: unconfirmed, venue: unconfirmed}
+    - {name: Mehndi, date: 2027-02-15, time: unconfirmed, venue: unconfirmed}
+    - {name: Wedding, date: 2027-02-16, time: unconfirmed, venue: "Emerald Green, Govindpuram, Ghaziabad"}
+  unverified_facts: display_as_to_be_confirmed
+  private_draft: supplied_later_and_requires_admin_approval_before_publication
+
+scope:
+  guest: [verified_login, RSVP, feed, Stories, live_chat, schedule, seating, maps, pickup, Baraat_tracking, concierge, family_handoff, profile]
+  communications: [in_app_and_web_first, Telegram_free_fallback_for_guests_family_and_vendors, official_WhatsApp_only_if_verified_free_and_healthy]
+  admin: [operations, guests, moderation, seating, transport, vendors, tasks, alerts, agents, autonomy, audit, exports]
+  prohibited: [shops, ads, public_pages, guest_external_links]
+
+constraints:
+  spending_inr: 0
+  card_on_file: prohibited
+  unofficial_whatsapp_gateway: prohibited_unless_separately_approved_on_disposable_number
+  deterministic_core_without_ai: required
+  secrets_in_chat_or_client: prohibited
+  unknown_wedding_facts: never_invent
+  feature_release: hidden_until_quality_gates_pass
+  phase_gate: explicit_GO_PHASE_n_required
+
+identity_and_access:
+  assistant_number: "[private existing WhatsApp number]"
+  current_number_state: WhatsApp_Business_mobile_app
+  migration: prohibited_until_Coexistence_eligibility_and_backup_impact_are_verified
+  paid_or_error_fallback: redirect_to_Telegram_or_web_without_retrying_billable_send
+  proof_of_phone_ownership: required_before_private_data
+  guest_unknown_number_policy: immediate_guest_access_after_verification
+  guest_posting_and_stories: immediate
+  direct_messages: enabled
+  privileged_accounts: require_second_factor
+  risky_action_approvers: Harsh_and_privately_configured_family_admins
+
+privacy:
+  phone_number_visibility: never_to_guests
+  cloud_ai_raw_phone_numbers_or_face_photos: prohibited
+  face_matching: local_only_opt_in
+  guest_notice: names_visible_and_post_story_views_recorded
+  delete_my_data: required
+  default_teardown: export_approved_archive_then_delete_personal_content_30_days_after_wedding
+  retention_override: Harsh_may_change_before_teardown
+  red_lines: [vendor_costs, total_budget, family_disputes, health_matters, phone_numbers, private_admin_notes, credentials, precise_live_location_outside_active_consent_window]
+
+operations:
+  languages: [Hinglish, Hindi, English, Punjabi]
+  quiet_hours: none_for_now
+  P0_alerts: always_on
+  seating: manual_drag_and_drop_with_capacity_and_accessibility_warnings
+  Baraat_tracking: designated_Android_browser_geolocation_with_consent_and_auto_expiry
+  dataset: [CSV, Google_Sheets]
+  dataset_rules: [column_mapping, dry_run, duplicates_report, bad_number_report, versioned_rollback]
+  ai_knowledge_updates: admin_review_and_publish_only
+  infrastructure:
+    primary: managed_cardless_free_tier_to_be_verified_in_phase_1
+    github: source_and_automation
+    ASUS_laptop: wedding_week_auxiliary_for_local_AI_gallery_and_redundancy
+    failure_mode: cached_read_only_lite_mode
+
+autonomy:
+  master_default: observe_only_until_agent_platform_approval
+  A0: silent_reversible_read_only_work
+  A1: act_and_digest_within_approved_rules
+  A2: act_with_notification_and_10_minute_undo
+  A3: Harsh_or_authorized_family_approval_required
+  agents_may_not: [change_permissions, change_kill_switches, exceed_tool_whitelist, authorize_spending]
+
+launch_principles:
+  MVP_order: [login, RSVP, chat, alerts, escalation, admin, Baraat_tracking, deterministic_concierge]
+  social_and_gallery: after_MVP_quality_gates
+  free_zero_lag_AI_guarantee: impossible
+  mitigation: rules_SQL_cache_multi_provider_fallback_and_human_handoff
+  availability_claim: prohibited_until_load_chaos_backup_and_24h_synthetic_probe_pass

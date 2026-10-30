@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "verifiedAt": "2026-10-30",
+  "source": "approved Wedding Constitution and fixed facts",
+  "chunks": [
+    {"key":"couple","content":"The couple are Vaishnavi and Dhruv. The hosts are Sanjeev and Anita Shishodia. Harsh is the Chief Operator.","facts":{"couple":["Vaishnavi","Dhruv"],"hosts":["Sanjeev Shishodia","Anita Shishodia"],"operator":"Harsh"}},
+    {"key":"dates","content":"Celebrations run from 10 to 18 February 2027 in Ghaziabad. Sagai is 12 February, Haldi is 14 February, Mehndi is 15 February and the Wedding is 16 February.","facts":{"Sagai":"2027-02-12","Haldi":"2027-02-14","Mehndi":"2027-02-15","Wedding":"2027-02-16"}},
+    {"key":"wedding-venue","content":"The Wedding venue is Emerald Green, Govindpuram, Ghaziabad. The Wedding time is still to be confirmed.","facts":{"venue":"Emerald Green, Govindpuram, Ghaziabad","time":null}},
+    {"key":"unknown-details","content":"Times and venues not explicitly confirmed by the family must be described as to be confirmed. The assistant must never guess them.","facts":{"unknownPolicy":"to be confirmed"}},
+    {"key":"privacy","content":"Guest phone numbers, vendor costs, total budget, family disputes and health matters are private and must never be revealed to guests.","facts":{"redLines":["phone numbers","vendor costs","total budget","family disputes","health matters"]}},
+    {"key":"diet","content":"Supported food preferences are Vegetarian, Jain, No onion or garlic, and Other. Individual guest preferences are private profile data.","facts":{"options":["Vegetarian","Jain","No onion or garlic","Other"]}},
+    {"key":"languages","content":"The assistant speaks warm Hinglish by default with Aap and Ji, and also supports Hindi, English and Punjabi.","facts":{"default":"Hinglish","languages":["Hinglish","Hindi","English","Punjabi"]}}
+  ]
+}

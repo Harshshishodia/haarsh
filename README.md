@@ -1,194 +1,134 @@
-# TreeQuest
-[![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org)
-[![GitHub license](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Checks status](https://github.com/SakanaAI/treequest/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/SakanaAI/treequest/actions)
-[![Tests status](https://github.com/SakanaAI/treequest/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/SakanaAI/treequest/actions)
+# V&D Wedding Concierge
 
-[![arXiv](https://img.shields.io/badge/arXiv-2503.04412-B31B1B?logo=data:image/svg+xml;base64,PHN2ZyBpZD0ibG9nb21hcmsiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDE3LjczMiAyNC4yNjkiPjxnIGlkPSJ0aW55Ij48cGF0aCBkPSJNNTczLjU0OSwyODAuOTE2bDIuMjY2LDIuNzM4LDYuNjc0LTcuODRjLjM1My0uNDcuNTItLjcxNy4zNTMtMS4xMTdhMS4yMTgsMS4yMTgsMCwwLDAtMS4wNjEtLjc0OGgwYS45NTMuOTUzLDAsMCwwLS43MTIuMjYyWiIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTU2Ni45ODQgLTI3MS41NDgpIiBmaWxsPSIjYmRiOWI0Ii8+PHBhdGggZD0iTTU3OS41MjUsMjgyLjIyNWwtMTAuNjA2LTEwLjE3NGExLjQxMywxLjQxMywwLDAsMC0uODM0LS41LDEuMDksMS4wOSwwLDAsMC0xLjAyNy42NmMtLjE2Ny40LS4wNDcuNjgxLjMxOSwxLjIwNmw4LjQ0LDEwLjI0MmgwbC02LjI4Miw3LjcxNmExLjMzNiwxLjMzNiwwLDAsMC0uMzIzLDEuMywxLjExNCwxLjExNCwwLDAsMCwxLjA0LjY5QS45OTIuOTkyLDAsMCwwLDU3MSwyOTNsOC41MTktNy45MkExLjkyNCwxLjkyNCwwLDAsMCw1NzkuNTI1LDI4Mi4yMjVaIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtNTY2Ljk4NCAtMjcxLjU0OCkiIGZpbGw9IiNiMzFiMWIiLz48cGF0aCBkPSJNNTg0LjMyLDI5My45MTJsLTguNTI1LTEwLjI3NSwwLDBMNTczLjUzLDI4MC45bC0xLjM4OSwxLjI1NGEyLjA2MywyLjA2MywwLDAsMCwwLDIuOTY1bDEwLjgxMiwxMC40MTlhLjkyNS45MjUsMCwwLDAsLjc0Mi4yODIsMS4wMzksMS4wMzksMCwwLDAsLjk1My0uNjY3QTEuMjYxLDEuMjYxLDAsMCwwLDU4NC4zMiwyOTMuOTEyWiIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTU2Ni45ODQgLTI3MS41NDgpIiBmaWxsPSIjYmRiOWI0Ii8+PC9nPjwvc3ZnPg==)](https://arxiv.org/abs/2503.04412)
-[![Blog](https://img.shields.io/badge/Blog-Sakana%20AI-blue?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAFXElEQVRoge2XW4yV1RXHf+s751v7zDlnwAnMKNgRCOUmBi/BYipNG2MTrKaRanyxqdUH+sCTb5poYrz0og8afWjqQ9OkCbZAkza0pU0sA0RroiZ4GQtmZphvf+coUGC4zIU5l+9bfZghJQPMnDnDmCY9v8dvr732+q9v77XXhhYtWrRo0aJFi/9fZD6dG2SPQqFYIJckuBpkAyMwsERIMgHV0QyV3DCjy6EiYLNd45oLMMgcVW7OBtwRpKxLYSWwFOhEKABqkIoxanAW4YSkRAR8jtCbZuhdPsqJRsVcMwG9oAuU+0zYjrEO6ADyF9cQOGcwBIwahCIsFKPTIDPpoopwHuOMwadBwJ7ucXYIVOdNgIHEcF3i2JwxngXuNKgJnBLwQE8iHKTCR8u5PKvHoTCaZ10m4S4x7gXWAx0CCw2yCE8uq/DavAj4EMJOxxYznhDYAgQI7xrsDVL2S43ebrjQqD8DKeVZYnW+CfwUWCWw9aYqf2w2xqtSdqyOHLu8ctorqVfMK/88WuB6g2AuvmPHSq986ZULR6B9JvuGFzMIjha4PgrZnsB+MR5GqItwEBgGlgVVbhRI5yKAiW20BOHA2gm/09KQgCPQXsrxo0ydXSK8gZEX2IHwqDh+gPAJsEgCNtvcz9UDAAJ7GrHPzmRQCvmGwcuWcgfQjvAZ8FRbhQOdMMw4lBx/SuFuMW49Bm3AWDPB94ET2GowXDMOzlnAgGNVauwEugXKwCtJhVdWwPildkmGt6UOqbByrEiRkeYEOGWrGYsRevIhx6cvoA0IcMpQWmW3pWRS+O37NT5+BJKpdjbGYZSaGF1tCa6Z4I9AuwnbMOoYB24Y4Uwj86YV8LVhTpfg2QRsatYvZQWMR8KQQKFmM2/LK9Hm+A7GbcDJxNgrUG9k3oyHuBsuXBq8QWYQciVoM9DnJn00uuCVGICFGD8EOgz+saLGB43ObShb/UW6tMbtkrImEm4MhAUpZD2MP26c/nFATMoCgy/CYPZCQuV7BvchHEvg+dk0ddOWvMEcyzPGdjMeZKK3aQd0ipkxcePmBYZSeHVkIa/dcpKRRgLod3w9hHcwFoux7aYav240+GkFlJVH6sIbYnQBI8ApjH6EQwhlJtrfvMEaM7YILJsUIwhejKdzVfZ0cXUhcZ6lVmc3sCmAPxSrbOuAs7MRcNUtlAj3yMSB/D3wZwt4d9k4fupNaxBEyg5gqQh7MRzGvQZvjik7jwW8sGSc6LIEwaKkzs+AjcCRNMsvOqqzC35avoTFJceqPlgwnZ1XbvZK5B3H4xzfKsMiH/KYdxzzShIp7w0qa6eIznlll1cqXjlTDrlrrjd4UxhkY+WZSKnGjr8bhJPfpZTj25FyeLLR+0uUZ4lBUHas9o59Xkm9o1TOcc9XHvhFSsqGSPncK6MDOTZPHR8I2eiVQ7FSjx2/LCmPxsqHk3/msHc80NNgJbzmlKDNOw56JY2VF6/WRpdCNsWO2CuVSDnnFYsdPQOO1Tv/+xprmmbUS3+RzqTKrwLjbhP2acjrUr38cJ8osrha4XabKL0qwlkx3hyr8HwjrfK84JX1XtkdKdVI+bjUxqapB/DfUBzM8Vjs2D/54DkXKW95x3d7L79HvhoMst7xk0iJYqUeKR994VgzNfg4ZKMP2Rcp571i3vGv2PH9marZvDOorPVKX6Scj5S3+ot0XRwzCKIcK3yOn3tl1CtJrMSDynOliffBvNFw7e0DFyoPGVha4K8rz3Du4ljkuD8wXjLYAAyZ8Lsg5TfdNQ7JFdrv/zki5QWv1L3jb3HInfOd9WtOD2TLBW7to7nHTIsWLVq0aNEs/wHPLhDZrKccngAAAABJRU5ErkJggg==)](https://sakana.ai/ab-mcts/)
+Local working application for the V&D guest concierge and wedding manager. It is deliberately separate from `/workspace/haarsh`, which is an unrelated Python library.
 
-![AB-MCTS](https://raw.githubusercontent.com/SakanaAI/treequest/main/images/figure1.png)
+## Run locally
 
-A flexible answer tree search library featuring **AB-MCTS**, useful for (but not limited to) LLM inference-time scaling.
-
-## Quick Start
-```python
-import random
-
-import treequest as tq
-
-# Each node is associated with a user-definable `state`.
-State = str
-
-# 1. Define a function to be used for node generation.
-def generate(parent_state: State | None) -> tuple[State, float]:
-    """Generates new states and scores based on the parent state."""
-    if parent_state is None: # None represents the expansion from root.
-        new_state = "Initial state"
-    else:
-        new_state = f"State after {parent_state}"
-
-    score = random.random() # A score for the new state; It should be normalized to the [0, 1] range.
-    return new_state, score
-
-# 2. Instantiate the algorithm and a search tree object.
-algo = tq.ABMCTSA()
-search_tree = algo.init_tree()
-
-# 3. Run the search with a generation budget (10 in this case).
-for _ in range(10):
-    search_tree = algo.step(search_tree, {'Action A': generate})
-
-# 4. Extract the best score and state.
-best_state, best_node_score = tq.top_k(search_tree, algo, k=1)[0]
-print(f"Best state: {best_state}, Score: {best_node_score}")
-```
-
-## Features
-- Easy-to-use API with customizable node generation and node scoring logic.
-- **AB-MCTS-A** and **AB-MCTS-M**, as well as **Multi-LLM AB-MCTS** support (See [our paper](https://arxiv.org/abs/2503.04412) for algorithm details).
-- Checkpointing and resuming searches.
-
-## Installation
-### uv
-First, install [`uv`](https://github.com/astral-sh/uv?tab=readme-ov-file#installation). Then you can install TreeQuest with the following command:
 ```bash
-uv add "treequest[abmcts-m]"
+cd /workspace/vd-wedding
+npm install
+npm run dev
 ```
 
-### pip
-Alternatively, you can use pip to install TreeQuest:
+The terminal prints the local URL. No account, secret or paid service is required for the current local demo.
+
+For the complete production-style server and durable local database:
+
 ```bash
-pip install "treequest[abmcts-m]"
+cp .env.example .env
+npm run build
+npm start
 ```
 
-## Usage
-### Using an LLM as a Node Generator
-You can use any object as a node state. You only need to define a generating function that returns a `(state, score)` tuple and takes the parent state as an argument:
-```python
-import dataclasses
+Open `http://localhost:4173`. The health endpoint is `GET /api/health`. This server stores SQLite data in `DATA_DIR` and serves the compiled PWA itself, so the preview does not depend on a temporary Vite process.
 
-import treequest as tq
+## Validate
 
-@dataclasses.dataclass
-class State:
-    llm_answer: str
-    score: float
-
-def generate(parent_state: State | None) -> tuple[State, float]:
-    """Generate a new node by calling an LLM."""
-    if parent_state is None:
-        state = initial_generation()
-    else:
-        state = refine_answer(parent_state.llm_answer, parent_state.score)
-
-    return state, state.score
-    
-def initial_generation() -> State:
-    """
-    Call LLM API to generate an initial answer.
-    """
-    ...
-
-def refine_answer(llm_answer: str, score: float) -> State:
-    """
-    Call LLM API to refine an answer.
-    """
-    ...
-
-
-algo = tq.ABMCTSM()
-search_tree = algo.init_tree()
-for i in range(20):
-    search_tree = algo.step(search_tree, {'Action Label': generate})
-    # Logging best node during the search.
-    if (i + 1) % 5 == 0:
-        best_interim_state, _ = tq.top_k(search_tree, algo, k=1)[0]
-        print(f"Iteration {i+1}: Best state so far = {best_interim_state}")
-
-best_state, _ = tq.top_k(search_tree, algo, k=1)[0]
-print(f"Best Answer: {best_state.llm_answer}, Best Score: {best_state.score}")
+```bash
+npm test
+npm run build
+npm run dev -- --host 127.0.0.1
 ```
 
-### Using Multiple LLMs (and Beyond)
+The sample preview demonstrates the invitation home, Stories strip, posts, private pass, household RSVP, chat, profile/privacy controls and deterministic concierge. The authenticated production route is consent-first and uses a Telegram contact challenge. Later social, chat, tracking and autopilot modules remain disabled behind server-side feature flags.
 
-TreeQuest supports multiple action types. For example, you can provide multiple generation functions backed by different LLMs to represent different action types:
+## Data and privacy boundary
 
-```python
-from functools import partial
+The sample preview uses synthetic records and browser-local RSVP state. The server provides durable sessions, guest/import records, help requests, flags, audit events and health state. It does not create calendar events, write to Google Drive or send WhatsApp messages. Do not put credentials in `VITE_` variables because those are included in the browser bundle.
 
-import treequest as tq
+Use `sample-data/guests.csv` as the initial import shape. Real phone numbers must be supplied through a private server-side import, never committed or placed in client code.
 
-def generate(llm_name: str, parent_state=None):
-    """
-    Call LLM API using litellm, vllm, etc., to generate a new node
-    """
-    ...
-    return new_state, new_score
+## Publication
 
-llm_names = ["o4-mini", "gemini-2.5-pro"]
-# Create dict of different actions backed by different LLMs.
-generate_fns = {llm_name: partial(generate, llm_name=llm_name) for llm_name in llm_names}
+No publication was performed. Telegram verification is implemented but needs a real bot credential and webhook drill. Public launch also remains blocked by the PostgreSQL/RLS migration, a second backup destination, external monitoring, privacy deletion verification and realistic load testing.
 
-algo = tq.StandardMCTS()
-search_tree = algo.init_tree()
-for _ in range(20):
-    search_tree = algo.step(search_tree, generate_fns)
-```
-The variation is not limited to LLM types; you can use different prompts, actions, scoring logic, etc. in `generate_fns`.
+## Container deployment
 
-## Algorithms
-
-### ABMCTS-A: ABMCTS with Node Aggregation
-
-ABMCTS-A uses node aggregation for adaptive branching:
-
-```python
-import treequest as tq
-
-# Instantiate the ABMCTS-A algorithm.
-ab_mcts_a = tq.ABMCTSA()
-
-search_tree = ab_mcts_a.init_tree()
-for _ in range(50):
-    search_tree = ab_mcts_a.step(search_tree, generate_fns)
+```bash
+docker build --secret id=proxy_ca,src=/path/to/session-proxy-ca.pem -t vd-wedding .
+docker run --rm -p 4173:4173 -v vd-wedding-data:/data \
+  -e PHONE_HASH_PEPPER='replace-with-a-long-random-value' \
+  -e TELEGRAM_BOT_USERNAME='your_bot_username' \
+  -e TELEGRAM_BOT_TOKEN='from-secret-store' \
+  -e TELEGRAM_WEBHOOK_SECRET='from-secret-store' \
+  -e BACKUP_ENCRYPTION_KEY='64-hex-characters' \
+  vd-wedding
 ```
 
-### ABMCTS-M: ABMCTS with Mixed Models
+Set the Telegram webhook to `https://YOUR_HOST/api/webhooks/telegram` with Telegram's `secret_token` equal to `TELEGRAM_WEBHOOK_SECRET`. Guests enter their phone, accept the privacy notice, open the generated bot link and share their own Telegram contact. The API stores HMACs rather than plaintext phone numbers.
 
-ABMCTS-M leverages PyMC's mixed modeling capabilities:
+After placing the rotated bot token and a newly generated webhook secret in the deployment secret store, configure the bot without pasting either value into a command or chat:
 
-```python
-import treequest as tq
-
-# Instantiate the ABMCTS-M algorithm.
-ab_mcts_m = tq.ABMCTSM()
-
-search_tree = ab_mcts_m.init_tree()
-for _ in range(30):
-    search_tree = ab_mcts_m.step(search_tree, generate_fns)
+```bash
+set -a; . ./.env; set +a
+npm run telegram:configure
 ```
 
-**NOTE**: To run AB-MCTS-M, you need to install extra dependencies with the `treequest[abmcts-m]` option.
+Expected output contains `"status":"ok"`, `"bot":"@VDWeddingBot"`, the HTTPS webhook URL, zero or a small pending-update count, and `"lastError":null`. The command also installs the bot description and `/start` and `/help` commands.
 
-## Requirements
+Demo authentication is disabled in production unless `ALLOW_DEMO_AUTH=true`. Do not enable it for a guest launch. WhatsApp remains disabled and fail-closed; use the web app and Telegram whenever WhatsApp has a charge or delivery error. Google credentials are intentionally absent; the application never guesses or embeds them.
 
-- Python 3.11+
+## Guest import
 
-## Contributing
+Use `sample-data/guests.csv` as the private CSV shape. An admin first posts the raw file with `Content-Type: text/csv` to `POST /api/admin/import/guests/dry-run`. Review every reported problem, then post the same file to `POST /api/admin/import/guests`. Apply is transactional and refuses a file with validation or duplicate errors.
 
-Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for development tips.
+For NocoDB, create a private table with the same eight column names, then store its table ID in `NOCODB_TABLE_ID` and a replacement API token in `NOCODB_API_TOKEN`. Call `POST /api/admin/import/nocodb/dry-run` first and inspect `problemCount`; only then call `POST /api/admin/import/nocodb`. Both endpoints require an authenticated admin session. The token stays on the server and is never returned to the browser.
 
-## Citation
-```bibtex
-@article{inoue2025wider,
-  title={Wider or Deeper? Scaling LLM Inference-Time Compute with Adaptive Branching Tree Search},
-  author={Inoue, Yuichi and Misaki, Kou and Imajuku, Yuki and Kuroki, So and Nakamura, Taishi and Akiba, Takuya},
-  journal={arXiv preprint arXiv:2503.04412},
-  year={2025}
-}
+## Backup and restore drill
+
+```bash
+BACKUP_ENCRYPTION_KEY='<same-64-hex-key>' npm run backup
+BACKUP_ENCRYPTION_KEY='<same-64-hex-key>' npm run restore:verify -- backups/<file>.vdbak
 ```
 
-## License
+The backup uses AES-256-GCM and writes a SHA-256 sidecar. Restore verification decrypts into an isolated temporary database, checks the digest and runs SQLite `quick_check`; it never overwrites the live database. Roll back an application release by stopping the new container and starting the previous immutable image with the same data volume. Restore data only from a verified backup after preserving the failed volume for investigation.
 
-[Apache 2.0](./LICENSE)
+The Phase 2 design, validation evidence and remaining public-launch gates are in [`docs/phase-2`](docs/phase-2/PHASE_STATUS.md).
+
+## Messaging operations
+
+Phase 3 uses a durable priority outbox. WhatsApp begins disabled with a zero allowance and BLACK budget mode. Any requested WhatsApp message routes to Telegram when its recipient is expressed as `telegram:<chat-id>`; otherwise it becomes an in-app web notification.
+
+Admin endpoints:
+
+- `GET /api/admin/messaging/status`
+- `POST /api/admin/messaging/enqueue`
+- `POST /api/admin/messaging/dispatch`
+- `PUT /api/admin/messaging/controls/:key`
+- `PUT /api/admin/messaging/budget/whatsapp`
+
+Guests retrieve in-app messages through `GET /api/notifications`. The background dispatcher runs every five seconds. Three failed attempts create a dead letter. Set `NTFY_TOPIC` and optionally `NTFY_ACCESS_TOKEN` for operator alerts; do not put private facts or phone numbers in a public ntfy topic.
+
+Rollback Phase 3 by stopping the new container and starting the prior Phase 2 image against a preserved copy of the data volume. Schema version 2 is additive, so the old application ignores its messaging tables. Do not delete those tables during rollback; they contain dedupe and audit evidence.
+
+The Phase 3 design and exact validation evidence are in [`docs/phase-3`](docs/phase-3/PHASE_STATUS.md).
+
+## Private social layer
+
+Authenticated guests use `/api/social/feed`, `/api/social/stories`, private profiles and notifications. New guest content waits in `/api/social/moderation` until an admin approves it. Images upload as multipart field `file` to `POST /api/social/media`; the server accepts JPEG, PNG, WebP or HEIC up to 8 MB, re-encodes to WebP at no more than 1600px and returns a private storage key.
+
+The upload directory lives under `DATA_DIR/uploads` and must share the encrypted backup lifecycle with the database. Never map it to an unauthenticated static web directory. Video is deliberately unavailable until the local transcoding path enforces duration, size and resource limits.
+
+Rollback Phase 4 by disabling `social.feed` and `social.stories`, stopping the Phase 4 container and starting the Phase 3 image with a preserved volume. Schema version 3 is additive. Preserve its tables and upload directory for audit and recovery.
+
+The Phase 4 design and evidence are in [`docs/phase-4`](docs/phase-4/PHASE_STATUS.md).
+
+## Live chat
+
+Phase 5 exposes authenticated routes under `/api/chat`. `GET /api/chat/events` is the SSE stream; EventSource reconnects automatically. Messages use a caller-generated `clientMessageId`, unique per sender, so an offline retry cannot create a duplicate. External links are rejected and direct messages are absent by design.
+
+The PWA keeps failed sends in `vd-chat-queue` and retries them with their original ID after SSE reconnects. Admins can pause a room through `PUT /api/chat/channels/:id/freeze`; the global `freeze.chat` and `panic` controls also block sends.
+
+Rollback by disabling `chat.realtime`, stopping the Phase 5 container and starting the Phase 4 image against a preserved volume. Schema version 4 is additive. The Phase 5 evidence is in [`docs/phase-5`](docs/phase-5/PHASE_STATUS.md).
+
+## RSVP and operations
+
+Phase 6 routes live under `/api/planning`. Store `ADMIN_STEP_UP_PIN` in the deployment secret store; seating assignments/publication and transport dispatch fail closed when it is absent. Guests retrieve only their own published logistics through `/api/planning/my-logistics`. The validation record is in [`docs/phase-6`](docs/phase-6/PHASE_STATUS.md).
+
+## Agent platform
+
+Phase 7 loads `docs/phase-1/agent-specs.yaml` and exposes authenticated orchestration under `/api/agents`. The production image copies the same immutable spec into `/app/agents`. Autopilot begins off; admins can choose off, observe or on through `/api/agents/admin/autopilot`. The Operator loop runs every five minutes and remains subject to tool whitelists, autonomy tiers and the hourly cap. Evidence is in [`docs/phase-7`](docs/phase-7/PHASE_STATUS.md).
+
+## AI quality engine
+
+Phase 8 uses `knowledge/wedding-bible.json`, the persona guide and 320 synthetic cases. `POST /api/ai/ask` returns intent, short response, confidence, tier, provider and citations. `POST /api/ai/admin/evaluate` runs the deployment gate. Optional model providers stay disabled until independently verified. Evidence is in [`docs/phase-8`](docs/phase-8/PHASE_STATUS.md).

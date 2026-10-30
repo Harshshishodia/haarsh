@@ -1,0 +1,10 @@
+{
+  "name": "V&D Wedding Concierge",
+  "short_name": "V&D",
+  "description": "The private wedding home for Vaishnavi and Dhruv",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf7ee",
+  "theme_color": "#773442",
+  "icons": []
+}

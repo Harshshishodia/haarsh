@@ -1,0 +1,20 @@
+BEGIN;
+CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, event_date TEXT NOT NULL, start_time TEXT, venue TEXT, address TEXT, status TEXT NOT NULL DEFAULT 'confirmed', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS rsvp_responses (guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE, event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE, response TEXT NOT NULL CHECK(response IN ('coming','maybe','not_coming')), adults INTEGER NOT NULL DEFAULT 0, kids INTEGER NOT NULL DEFAULT 0, attendee_names TEXT NOT NULL DEFAULT '[]', diet TEXT NOT NULL DEFAULT 'Vegetarian', stay_needed INTEGER NOT NULL DEFAULT 0 CHECK(stay_needed IN (0,1)), arrival_mode TEXT, arrival_time TEXT, pickup_point TEXT, notes TEXT NOT NULL DEFAULT '', late INTEGER NOT NULL DEFAULT 0 CHECK(late IN (0,1)), updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(guest_id,event_id));
+CREATE TABLE IF NOT EXISTS seating_plans (id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')), version INTEGER NOT NULL DEFAULT 1, created_by TEXT REFERENCES guests(id) ON DELETE SET NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, published_at TEXT);
+CREATE TABLE IF NOT EXISTS seating_units (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL REFERENCES seating_plans(id) ON DELETE CASCADE, unit_type TEXT NOT NULL CHECK(unit_type IN ('table','seat','room','bus')), name TEXT NOT NULL, capacity INTEGER NOT NULL CHECK(capacity>0), attributes TEXT NOT NULL DEFAULT '{}', UNIQUE(plan_id,name));
+CREATE TABLE IF NOT EXISTS seating_assignments (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL REFERENCES seating_plans(id) ON DELETE CASCADE, unit_id TEXT NOT NULL REFERENCES seating_units(id) ON DELETE CASCADE, guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE, seat_label TEXT, published INTEGER NOT NULL DEFAULT 0 CHECK(published IN (0,1)), updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(plan_id,guest_id));
+CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, property_name TEXT NOT NULL, room_number TEXT NOT NULL, capacity INTEGER NOT NULL, notes TEXT NOT NULL DEFAULT '', UNIQUE(property_name,room_number));
+CREATE TABLE IF NOT EXISTS room_assignments (room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE, guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE, check_in TEXT, check_out TEXT, PRIMARY KEY(room_id,guest_id));
+CREATE TABLE IF NOT EXISTS transport_requests (id TEXT PRIMARY KEY, guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE, mode TEXT NOT NULL, arrival_at TEXT, pickup_point TEXT, passengers INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'requested' CHECK(status IN ('requested','assigned','arrived','cancelled')), driver_name TEXT, vehicle_label TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS arrivals (id TEXT PRIMARY KEY, guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE, event_id TEXT REFERENCES events(id) ON DELETE SET NULL, arrived_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, source TEXT NOT NULL DEFAULT 'admin', UNIQUE(guest_id,event_id));
+CREATE INDEX IF NOT EXISTS idx_rsvp_event_response ON rsvp_responses(event_id,response);
+CREATE INDEX IF NOT EXISTS idx_seating_guest_published ON seating_assignments(guest_id,published);
+CREATE INDEX IF NOT EXISTS idx_transport_status ON transport_requests(status,arrival_at);
+INSERT OR IGNORE INTO events(id,slug,name,event_date,start_time,venue,address,status) VALUES
+('event-sagai','sagai','Sagai','2027-02-12',NULL,NULL,NULL,'to_be_confirmed'),
+('event-haldi','haldi','Haldi','2027-02-14',NULL,NULL,NULL,'to_be_confirmed'),
+('event-mehndi','mehndi','Mehndi','2027-02-15',NULL,NULL,NULL,'to_be_confirmed'),
+('event-wedding','wedding','Wedding','2027-02-16',NULL,'Emerald Green','Govindpuram, Ghaziabad','confirmed');
+INSERT OR IGNORE INTO schema_migrations(version,name) VALUES(5,'rsvp_seating_transport');
+COMMIT;

@@ -1,0 +1,10 @@
+BEGIN;
+CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE feature_flags (key TEXT PRIMARY KEY, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), description TEXT NOT NULL, updated_by TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE consents (id TEXT PRIMARY KEY, guest_id TEXT, purpose TEXT NOT NULL, granted INTEGER NOT NULL CHECK(granted IN (0,1)), policy_version TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(guest_id,purpose,policy_version));
+CREATE TABLE devices (id TEXT PRIMARY KEY, guest_id TEXT NOT NULL, label TEXT NOT NULL, last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, revoked_at TEXT);
+CREATE TABLE auth_challenges (id TEXT PRIMARY KEY, phone_hash TEXT NOT NULL, code_hash TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('telegram','whatsapp','admin')), status TEXT NOT NULL DEFAULT 'pending', telegram_chat_id TEXT, exchange_token_hash TEXT, attempts INTEGER NOT NULL DEFAULT 0, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE data_imports (id TEXT PRIMARY KEY, source TEXT NOT NULL, mode TEXT NOT NULL, status TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0, problem_count INTEGER NOT NULL DEFAULT 0, checksum TEXT, created_by TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE system_health (component TEXT PRIMARY KEY, state TEXT NOT NULL, facts TEXT NOT NULL DEFAULT '{}', checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+INSERT INTO schema_migrations(version,name) VALUES(1,'foundation');
+COMMIT;

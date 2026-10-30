@@ -1,0 +1,211 @@
+schema_version: 1
+defaults: &defaults
+  timeout_ms: 3000
+  retry: {max_attempts: 2, backoff: exponential_with_jitter}
+  prompt_version: 1.0.0
+  dry_run_default: true
+agents:
+  - <<: *defaults
+    id: orchestrator
+    role: request coordinator
+    goals: [classify intent, invoke minimum specialists, return one policy-safe response]
+    model_tier: [0, 1]
+    allowed_tools: [registry.read, blackboard.write, specialist.invoke, handoff.create]
+    input_schema: schemas/orchestrator-input.json
+    output_schema: schemas/guest-reply.json
+    memory_scope: [request, conversation, wedding_bible]
+    autonomy_tier: A0
+    escalation_rules: [low confidence to handoff, specialist conflict to critic, P0 bypass AI]
+    eval_suite_id: eval-orchestrator-v1
+  - <<: *defaults
+    id: identity
+    role: verified identity and session specialist
+    goals: [normalize E.164, guide ownership proof, protect private data, manage devices]
+    model_tier: [0]
+    allowed_tools: [auth.challenge.create, auth.session.read, auth.session.revoke, newcomer.create]
+    input_schema: schemas/identity-input.json
+    output_schema: schemas/action-result.json
+    memory_scope: [request, guest_profile]
+    autonomy_tier: A1
+    escalation_rules: [privileged login to second factor, repeated failure to admin review]
+    eval_suite_id: eval-identity-v1
+  - <<: *defaults
+    id: rsvp
+    role: household RSVP specialist
+    goals: [collect slots, validate event invitation, update requested RSVP, summarize confirmation]
+    model_tier: [0]
+    allowed_tools: [guest.read, invitation.read, rsvp.read, rsvp.update]
+    input_schema: schemas/rsvp-input.json
+    output_schema: schemas/action-result.json
+    memory_scope: [conversation, guest_profile]
+    autonomy_tier: A1
+    escalation_rules: [household conflict to admin, uninvited event never added]
+    eval_suite_id: eval-rsvp-v1
+  - <<: *defaults
+    id: concierge
+    role: wedding-only guest concierge
+    goals: [answer from cited facts, mirror language, keep response brief, hand off unknowns]
+    model_tier: [0, 1]
+    allowed_tools: [bible.search, schedule.read, logistics.read_own, handoff.create]
+    input_schema: schemas/concierge-input.json
+    output_schema: schemas/cited-reply.json
+    memory_scope: [conversation, guest_profile, wedding_bible]
+    autonomy_tier: A1
+    escalation_rules: [missing citation to handoff, health or SOS to P0 lane, off-topic refuse]
+    eval_suite_id: eval-concierge-v1
+  - <<: *defaults
+    id: social
+    role: private social-layer specialist
+    goals: [apply visibility, execute user-owned actions, preserve offline idempotency]
+    model_tier: [0]
+    allowed_tools: [post.read, post.write_own, story.write_own, reaction.write, report.create]
+    input_schema: schemas/social-input.json
+    output_schema: schemas/action-result.json
+    memory_scope: [request, guest_profile]
+    autonomy_tier: A1
+    escalation_rules: [reported or flagged content to moderation]
+    eval_suite_id: eval-social-v1
+  - <<: *defaults
+    id: chat
+    role: realtime chat specialist
+    goals: [deliver idempotently, enforce channel membership, recover offline queue]
+    model_tier: [0]
+    allowed_tools: [channel.read, message.send, message.edit_own, message.delete_own, report.create]
+    input_schema: schemas/chat-input.json
+    output_schema: schemas/action-result.json
+    memory_scope: [request, conversation]
+    autonomy_tier: A1
+    escalation_rules: [abuse to moderation, frozen channel rejects write]
+    eval_suite_id: eval-chat-v1
+  - <<: *defaults
+    id: content-safety
+    role: content moderation specialist
+    goals: [rules-first triage, protect guests, minimize false positives]
+    model_tier: [0, 3, 1]
+    allowed_tools: [content.scan, moderation.queue, content.hide_temporary, mute.one_hour]
+    input_schema: schemas/content-input.json
+    output_schema: schemas/moderation-decision.json
+    memory_scope: [request, operational]
+    autonomy_tier: A1
+    escalation_rules: [uncertain case to admin, permanent action A3]
+    eval_suite_id: eval-safety-v1
+  - <<: *defaults
+    id: seating
+    role: seating and capacity specialist
+    goals: [validate manual moves, keep households together, surface conflicts]
+    model_tier: [0, 3]
+    allowed_tools: [seating.read, seating.draft_move, seating.validate, undo.create]
+    input_schema: schemas/seating-input.json
+    output_schema: schemas/action-result.json
+    memory_scope: [operational, guest_profile]
+    autonomy_tier: A1
+    escalation_rules: [publish and notifications A2, rule conflict to admin]
+    eval_suite_id: eval-seating-v1
+  - <<: *defaults
+    id: transport
+    role: pickup, room and arrival specialist
+    goals: [assign within rules, track manifests, flag unowned work]
+    model_tier: [0]
+    allowed_tools: [transport.read, transport.draft_assign, arrival.update, task.create]
+    input_schema: schemas/transport-input.json
+    output_schema: schemas/action-result.json
+    memory_scope: [operational, guest_profile]
+    autonomy_tier: A1
+    escalation_rules: [capacity breach to operator, medical need to P0]
+    eval_suite_id: eval-transport-v1
+  - <<: *defaults
+    id: tracker
+    role: consent-based location and ETA specialist
+    goals: [ingest valid points, detect staleness, publish minimum necessary location]
+    model_tier: [0, 3]
+    allowed_tools: [tracker.point.write, tracker.latest.read, tracker.health.read, alert.create]
+    input_schema: schemas/tracker-input.json
+    output_schema: schemas/tracker-result.json
+    memory_scope: [operational]
+    autonomy_tier: A1
+    escalation_rules: [no consent reject, stale session to P1, outside window expire]
+    eval_suite_id: eval-tracker-v1
+  - <<: *defaults
+    id: handoff
+    role: family handoff coordinator
+    goals: [route by role and VIP policy, set SLA, distinguish receipt from confirmation]
+    model_tier: [0]
+    allowed_tools: [handoff.create, handoff.assign, alert.create, conversation.transfer]
+    input_schema: schemas/handoff-input.json
+    output_schema: schemas/action-result.json
+    memory_scope: [conversation, guest_profile, operational]
+    autonomy_tier: A1
+    escalation_rules: [VIP to warm alert, unanswered SLA to P1, SOS to P0]
+    eval_suite_id: eval-handoff-v1
+  - <<: *defaults
+    id: messaging
+    role: compliant outbound messaging specialist
+    goals: [dedupe, enforce consent and budget, select cheapest permitted channel]
+    model_tier: [0]
+    allowed_tools: [outbox.enqueue, budget.read, consent.read, telegram.send, whatsapp.send_if_free]
+    input_schema: schemas/message-plan.json
+    output_schema: schemas/action-result.json
+    memory_scope: [request, operational]
+    autonomy_tier: A1
+    escalation_rules: [unknown or positive cost reject, broadcast A3, provider failure fallback]
+    eval_suite_id: eval-messaging-v1
+  - <<: *defaults
+    id: data-steward
+    role: provenance and data quality specialist
+    goals: [validate imports, preserve provenance, queue conflicts, prepare bible corrections]
+    model_tier: [0, 1]
+    allowed_tools: [import.dry_run, conflict.queue, bible.draft, profile.correct_with_audit]
+    input_schema: schemas/data-input.json
+    output_schema: schemas/data-report.json
+    memory_scope: [wedding_bible, operational]
+    autonomy_tier: A0
+    escalation_rules: [record merge A3, public fact change A3]
+    eval_suite_id: eval-data-v1
+  - <<: *defaults
+    id: operator
+    role: five-minute operations supervisor
+    goals: [work prioritized gaps, respect autonomy, produce Autopilot Report]
+    model_tier: [0, 1]
+    allowed_tools: [queue.read, task.draft, specialist.invoke, report.write]
+    input_schema: schemas/operator-input.json
+    output_schema: schemas/autopilot-report.json
+    memory_scope: [operational, wedding_bible]
+    autonomy_tier: A0
+    escalation_rules: [A2/A3 action to approval workflow, loops to critic]
+    eval_suite_id: eval-operator-v1
+  - <<: *defaults
+    id: nigrani
+    role: two-minute reliability watchtower
+    goals: [run deterministic checks, detect change, dedupe alerts, trigger ladder]
+    model_tier: [0, 3]
+    allowed_tools: [health.read, metrics.read, anomaly.score, alert.create, escalation.trigger]
+    input_schema: schemas/health-snapshot.json
+    output_schema: schemas/alert-decision.json
+    memory_scope: [operational]
+    autonomy_tier: A0
+    escalation_rules: [P0 immediate ladder, unchanged state no message]
+    eval_suite_id: eval-nigrani-v1
+  - <<: *defaults
+    id: critic
+    role: policy, privacy and factual reviewer
+    goals: [apply safety order, reject unsupported facts, constrain tools]
+    model_tier: [0, 2]
+    allowed_tools: [policy.read, bible.read, proposal.reject, handoff.create]
+    input_schema: schemas/proposal.json
+    output_schema: schemas/critic-decision.json
+    memory_scope: [request, wedding_bible, operational]
+    autonomy_tier: A0
+    escalation_rules: [unresolved conflict to human]
+    eval_suite_id: eval-critic-v1
+  - <<: *defaults
+    id: synthetic-guest
+    role: critical-journey probe
+    goals: [exercise login RSVP chat concierge and lite mode without real guest data]
+    model_tier: [0]
+    allowed_tools: [probe.execute, health.write, alert.create]
+    input_schema: schemas/probe-plan.json
+    output_schema: schemas/probe-result.json
+    memory_scope: [operational]
+    autonomy_tier: A0
+    escalation_rules: [two failures to P1, privacy/auth leak to P0]
+    eval_suite_id: eval-probe-v1
