@@ -10,6 +10,7 @@
     "build:preview": "tsc -b && vite build --config vite.preview.config.ts",
     "start": "node dist-server/index.js",
     "db:migrate:vercel": "node scripts/migrate-vercel-core.mjs",
+    "telegram:verify": "node scripts/verify-telegram-token.mjs",
     "backup": "node scripts/backup.mjs",
     "restore:verify": "node scripts/restore-verify.mjs",
     "telegram:configure": "node scripts/configure-telegram.mjs",
