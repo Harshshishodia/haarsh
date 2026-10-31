@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "npm run db:migrate:vercel && npm run telegram:verify && npm run build:preview",
+  "buildCommand": "npm run db:migrate:vercel && npm run telegram:verify && npm run telegram:webhook && npm run build:preview",
   "outputDirectory": "preview",
   "cleanUrls": true,
   "headers": [
