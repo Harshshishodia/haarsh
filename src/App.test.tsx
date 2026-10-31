@@ -32,6 +32,29 @@ describe('V&D wedding concierge', () => {
     expect(screen.getByRole('button', { name: /Vendors/i })).toBeTruthy()
   })
 
+  it('opens functional manager search, alerts and add flows', async () => {
+    render(<App />)
+    await enterPreview()
+    fireEvent.click(screen.getByRole('button', { name: /wedding manager/i }))
+    fireEvent.click(screen.getByRole('button', { name: /search manager/i }))
+    expect(screen.getByRole('heading', { name: /search wedding manager/i })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    fireEvent.click(screen.getByRole('button', { name: /manager alerts/i }))
+    expect(screen.getByRole('heading', { name: /notifications/i })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add new/i }))
+    fireEvent.change(screen.getByPlaceholderText(/what should this be called/i), { target: { value: 'New wedding task' } })
+    expect(screen.getByRole('button', { name: /save record/i }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('opens a sample wedding story as a real viewer', async () => {
+    render(<App />)
+    await enterPreview()
+    fireEvent.click(screen.getByRole('button', { name: /wedding desk/i }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByText(/welcome to our private wedding home/i)).toBeTruthy()
+  })
+
   it('keeps the concierge deterministic for unknown facts', async () => {
     render(<App />)
     await enterPreview()
