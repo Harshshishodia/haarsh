@@ -12,6 +12,7 @@
     "backup": "node scripts/backup.mjs",
     "restore:verify": "node scripts/restore-verify.mjs",
     "telegram:configure": "node scripts/configure-telegram.mjs",
+    "telegram:poll": "node scripts/telegram-poll.mjs",
     "examples:generate": "node scripts/generate-synthetic-conversations.mjs",
     "test:security": "node scripts/security-smoke.mjs",
     "test:load": "node scripts/load-smoke.mjs",

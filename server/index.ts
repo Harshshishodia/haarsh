@@ -18,6 +18,7 @@ import { baraatRouter, ingestExternalLocation } from './baraat.js'
 import { galleryRouter } from './gallery.js'
 import { operationsRouter } from './operations.js'
 import { teardownRouter } from './teardown.js'
+import { handleTelegramUpdate } from './telegram.js'
 
 const app = express()
 const port = Number(process.env.PORT || 4173)
@@ -306,36 +307,7 @@ app.post('/api/webhooks/telegram', async (req, res) => {
   const externalId=String(req.body?.update_id ?? '')
   if (!externalId) return res.status(400).json({error:'update_id_required'})
   if (!recordInbound('telegram',externalId,'update',req.body)) return res.json({received:true,duplicate:true})
-  const message = req.body?.message || req.body?.edited_message; const chatId = message?.chat?.id ? String(message.chat.id) : ''
-  if (!message || !chatId) return res.json({ received:true, ignored:true })
-  const start = typeof message.text === 'string' ? message.text.match(/^\/start\s+([A-F0-9]{10})$/i) : null
-  if (start) {
-    const challenge = db.prepare("SELECT id FROM auth_challenges WHERE code_hash=? AND status='pending' AND expires_at > datetime('now')").get(hashCode(start[1].toUpperCase())) as {id:string}|undefined
-    if (!challenge) { await sendTelegram(chatId, 'This verification code has expired. Please start again in the wedding app.'); return res.json({received:true}) }
-    db.prepare('UPDATE auth_challenges SET telegram_chat_id=? WHERE id=?').run(chatId, challenge.id)
-    await sendTelegram(chatId, 'Please tap below to share the mobile number attached to your Telegram account. This is used only to verify your wedding login.', true)
-    return res.json({ received:true })
-  }
-  if (message.contact?.phone_number) {
-    const challenge = db.prepare("SELECT id, phone_hash FROM auth_challenges WHERE telegram_chat_id=? AND status='pending' AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1").get(chatId) as {id:string,phone_hash:string}|undefined
-    if (!challenge) { await sendTelegram(chatId, 'No active wedding login request was found. Please start again in the wedding app.'); return res.json({received:true}) }
-    const suppliedPhone = String(message.contact.phone_number).replace(/[\s()-]/g,''); const normalized = suppliedPhone.startsWith('+') ? suppliedPhone : `+${suppliedPhone}`
-    if (hashPhone(normalized) !== challenge.phone_hash) {
-      db.prepare('UPDATE auth_challenges SET attempts=attempts+1 WHERE id=?').run(challenge.id)
-      await sendTelegram(chatId, 'That Telegram number does not match the number entered in the wedding app. Please return and check it.')
-      return res.json({ received:true })
-    }
-    db.prepare("UPDATE auth_challenges SET status='verified' WHERE id=?").run(challenge.id)
-    await sendTelegram(chatId, 'Verified Ji. Please return to the wedding app to continue.')
-    return res.json({ received:true })
-  }
-  if (message.location) {
-    const owner=db.prepare("SELECT g.id FROM auth_challenges a JOIN guests g ON g.phone_hash=a.phone_hash WHERE a.telegram_chat_id=? AND a.status IN ('verified','exchanged') ORDER BY a.created_at DESC LIMIT 1").get(chatId) as {id:string}|undefined
-    const tracking=owner?ingestExternalLocation(owner.id,'telegram',message.location,message.date?new Date(Number(message.date)*1000):new Date()):{accepted:false,reason:'telegram_identity_not_verified'}
-    if(!tracking.accepted)await sendTelegram(chatId,'Live tracking is not active for this verified account. Please start sharing from the wedding app first.')
-    return res.json({received:true,tracking})
-  }
-  res.json({ received:true, ignored:true })
+  res.json(await handleTelegramUpdate(req.body, { hashPhone, hashCode }))
 })
 
 app.post('/api/webhooks/whatsapp', (req: Request & {rawBody?:Buffer}, res) => {
