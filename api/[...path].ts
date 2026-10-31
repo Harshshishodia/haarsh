@@ -57,6 +57,21 @@ async function telegram(method: string, payload: unknown) {
   if (!response.ok || !result.ok) throw new Error(`telegram_${method}_failed`)
 }
 
+function weddingAnswer(input: string) {
+  const q = input.trim().toLowerCase().replace(/^\/ask\s*/, '')
+  if (!q || q === '/ask') return 'Ask me about the wedding date, venue, schedule, RSVP, privacy or Baraat tracking Ji.'
+  if (/^(hi|hello|hey|namaste)\b/.test(q)) return 'Namaste Ji. Main wedding dates, venue, RSVP aur Baraat tracking mein help kar sakta hoon.'
+  if (/when|date|wedding day|shaadi kab/.test(q)) return 'Celebrations 12–16 February 2027 ko Ghaziabad mein hain Ji. Wedding Tuesday, 16 February ko hai; time abhi to be confirmed hai.'
+  if (/venue|where|location|address|reach|direction/.test(q)) return 'Wedding venue Emerald Green, Govindpuram, Ghaziabad hai Ji. Baaki event venues abhi to be confirmed hain.'
+  if (/rsvp|attend|coming/.test(q)) return 'RSVP website ke private wedding home mein login karke update kijiye Ji. Har household member aur event ka response save ho sakta hai.'
+  if (/baraat|track|live/.test(q)) return 'Baraat tab authorised tracker ki live GPS position dikhata hai. Sharing band hote hi exact location unavailable ho jaati hai Ji.'
+  if (/sagai/.test(q)) return 'Sagai 12 February 2027 ko planned hai; time aur venue abhi to be confirmed hain Ji.'
+  if (/haldi/.test(q)) return 'Haldi 14 February 2027 ko planned hai; time aur venue abhi to be confirmed hain Ji.'
+  if (/mehndi/.test(q)) return 'Mehndi 15 February 2027 ko planned hai; time aur venue abhi to be confirmed hain Ji.'
+  if (/privacy|phone|number|data/.test(q)) return 'Guest phone numbers private rehte hain. Verified profile se data export ya deletion request ki ja sakti hai Ji.'
+  return 'Is baat ka confirmed answer abhi available nahi hai Ji. Main guess nahi karunga; family desk se confirmation lijiye.'
+}
+
 async function rateLimited(key: string) {
   if (!sql) return true
   const rows = await sql`
@@ -200,7 +215,7 @@ async function handleTelegram(req: VercelRequest, res: VercelResponse) {
     await telegram('sendMessage', { chat_id: chatId, text: 'Number type karne se ownership verify nahi hoti Ji. Neeche “Share my number securely” button tap kijiye. Telegram tabhi aapka apna number confirm karta hai.', reply_markup: { keyboard: [[{ text: 'Share my number securely', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } })
     return json(res, 200, { received: true, needsContact: true })
   }
-  await telegram('sendMessage', { chat_id: chatId, text: 'Namaste Ji. Wedding login ke liye website se Telegram verification shuru kijiye. Main confirmed date, venue aur RSVP mein help kar sakta hoon.' })
+  await telegram('sendMessage', { chat_id: chatId, text: weddingAnswer(String(message.text || '')) })
   return json(res, 200, { received: true })
 }
 
