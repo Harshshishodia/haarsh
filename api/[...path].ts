@@ -12,6 +12,7 @@ const botToken = process.env.TELEGRAM_BOT_TOKEN || ''
 const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'VDWeddingBot'
 const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || ''
 const migrationSecret = process.env.MIGRATION_SECRET || ''
+const adminPhone = process.env.ADMIN_PHONE_E164 || ''
 
 async function migrateCore() {
   if (!sql) throw new Error('database_missing')
@@ -135,8 +136,13 @@ async function handleAuth(req: VercelRequest, res: VercelResponse, path: string)
       const displayName = String(req.body?.displayName || 'Wedding guest').trim().slice(0, 100) || 'Wedding guest'
       const side = ['bride','groom','shared'].includes(String(req.body?.side)) ? String(req.body.side) : 'shared'
       const relation = String(req.body?.relation || 'guest').slice(0, 80)
-      await sql`INSERT INTO guests(id,phone_hash,display_name,side,relation) VALUES(${guestId},${challenge.phone_hash},${displayName},${side},${relation})`
+      const role = adminPhone && equal(digest('phone', adminPhone), String(challenge.phone_hash)) ? 'admin' : 'guest'
+      await sql`INSERT INTO guests(id,phone_hash,display_name,side,relation,role) VALUES(${guestId},${challenge.phone_hash},${displayName},${side},${relation},${role})`
       guests = await sql`SELECT * FROM guests WHERE id=${guestId}`
+    }
+    if (adminPhone && equal(digest('phone', adminPhone), String(challenge.phone_hash)) && guests[0].role !== 'admin') {
+      await sql`UPDATE guests SET role='admin', review_state='approved' WHERE id=${guests[0].id}`
+      guests = await sql`SELECT * FROM guests WHERE id=${guests[0].id}`
     }
     const rawSession = crypto.randomBytes(32).toString('base64url')
     await sql`INSERT INTO sessions(id_hash,guest_id,expires_at) VALUES(${digest('session', rawSession)},${guests[0].id},now()+interval '30 days')`
@@ -168,24 +174,47 @@ async function handleTelegram(req: VercelRequest, res: VercelResponse) {
     }
     return json(res, 200, { received: true })
   }
+  if (/^\/start\s*$/.test(String(message.text || ''))) {
+    await telegram('sendMessage', { chat_id: chatId, text: 'Website par apna number daalne ke baad, neeche se apna Telegram contact share kijiye Ji.', reply_markup: { keyboard: [[{ text: 'Share my number securely', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } })
+    return json(res, 200, { received: true })
+  }
   if (message.contact?.phone_number) {
     if (Number(message.contact.user_id) !== Number(message.from?.id)) {
       await telegram('sendMessage', { chat_id: chatId, text: 'Sirf apna Telegram contact share kijiye Ji; forwarded contact accept nahi hota.' })
       return json(res, 200, { received: true, rejected: true })
     }
     const normalized = normalizePhone(String(message.contact.phone_number).startsWith('+') ? String(message.contact.phone_number) : `+${message.contact.phone_number}`)
-    const rows = await sql`SELECT id,phone_hash,code_hash FROM login_challenges WHERE telegram_chat_id=${chatId} AND telegram_user_id=${String(message.from.id)} AND status='pending' AND expires_at>now() ORDER BY created_at DESC LIMIT 1`
-    if (!rows[0] || !normalized || !equal(digest('phone', normalized), String(rows[0].phone_hash))) {
+    const phoneHash = normalized ? digest('phone', normalized) : ''
+    const rows = await sql`SELECT id,phone_hash,code_hash FROM login_challenges WHERE phone_hash=${phoneHash} AND status='pending' AND expires_at>now() AND (telegram_chat_id IS NULL OR (telegram_chat_id=${chatId} AND telegram_user_id=${String(message.from.id)})) ORDER BY created_at DESC LIMIT 1`
+    if (!rows[0] || !normalized) {
       await telegram('sendMessage', { chat_id: chatId, text: 'Number match nahi hua Ji. Website par number check karke phir try kijiye.' })
       return json(res, 200, { received: true, matched: false })
     }
     const otp = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
-    await sql`UPDATE login_challenges SET code_hash=${digest('otp', otp)}, status='otp_sent' WHERE id=${rows[0].id}`
+    await sql`UPDATE login_challenges SET code_hash=${digest('otp', otp)}, status='otp_sent', telegram_chat_id=${chatId}, telegram_user_id=${String(message.from.id)} WHERE id=${rows[0].id}`
     await telegram('sendMessage', { chat_id: chatId, text: `Aapka V&D Wedding OTP ${otp} hai. Yeh 5 minutes mein expire hoga. Kisi se share na karein Ji.`, reply_markup: { remove_keyboard: true } })
     return json(res, 200, { received: true, matched: true })
   }
   await telegram('sendMessage', { chat_id: chatId, text: 'Namaste Ji. Wedding login ke liye website se Telegram verification shuru kijiye. Main confirmed date, venue aur RSVP mein help kar sakta hoon.' })
   return json(res, 200, { received: true })
+}
+
+async function handleManager(req: VercelRequest, res: VercelResponse, path: string) {
+  if (!sql) return json(res, 503, { error: 'database_missing' })
+  const actor = await currentGuest(req)
+  if (!actor || actor.role !== 'admin') return json(res, 403, { error: 'admin_required' })
+  if (path === 'manager/guests' && req.method === 'GET') {
+    const rows = await sql`SELECT id,display_name,side,relation,review_state,created_at FROM guests ORDER BY created_at DESC LIMIT 500`
+    return json(res, 200, { guests: rows })
+  }
+  const match = path.match(/^manager\/guests\/([0-9a-f-]+)$/)
+  if (match && req.method === 'PATCH') {
+    const state = String(req.body?.reviewState || '')
+    if (!['approved','rejected','pending'].includes(state)) return json(res, 400, { error: 'invalid_review_state' })
+    await sql`UPDATE guests SET review_state=${state} WHERE id=${match[1]}`
+    return json(res, 200, { status: 'updated', reviewState: state })
+  }
+  return false
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -213,6 +242,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(204).end()
     }
     if (path === 'telegram/webhook' && req.method === 'POST') return await handleTelegram(req, res)
+    if (path.startsWith('manager/')) {
+      const managed = await handleManager(req, res, path)
+      if (managed !== false) return managed
+    }
     const auth = await handleAuth(req, res, path)
     if (auth !== false) return auth
     return json(res, 404, { error: 'route_not_found' })
