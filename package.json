@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
     "build:preview": "tsc -b && vite build --config vite.preview.config.ts",
     "start": "node dist-server/index.js",
+    "db:migrate:vercel": "node scripts/migrate-vercel-core.mjs",
     "backup": "node scripts/backup.mjs",
     "restore:verify": "node scripts/restore-verify.mjs",
     "telegram:configure": "node scripts/configure-telegram.mjs",
@@ -20,11 +21,13 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "@vitejs/plugin-react": "latest",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^7.0.3",
     "express": "^5.3.0",
     "helmet": "^8.3.0",
+    "libphonenumber-js": "^1.13.15",
     "lucide-react": "latest",
     "multer": "^2.5.0",
     "react": "latest",
@@ -32,7 +35,8 @@
     "sharp": "^0.35.5",
     "typescript": "latest",
     "vite": "latest",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "latest",
@@ -43,6 +47,7 @@
     "@types/multer": "^2.3.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@vercel/node": "^29.0.1",
     "eslint": "latest",
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
