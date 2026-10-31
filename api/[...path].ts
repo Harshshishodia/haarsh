@@ -25,6 +25,7 @@ async function migrateCore() {
     `CREATE TABLE IF NOT EXISTS telegram_updates (update_id bigint PRIMARY KEY, received_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE TABLE IF NOT EXISTS login_rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS audit_log (id uuid PRIMARY KEY, actor_id uuid REFERENCES guests(id) ON DELETE SET NULL, action text NOT NULL, entity_type text NOT NULL, entity_id text, facts jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS rsvps (guest_id uuid PRIMARY KEY REFERENCES guests(id) ON DELETE CASCADE, responses jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
   ]
   for (const statement of statements) await sql.query(statement)
@@ -244,6 +245,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (raw && sql && sessionSecret) await sql`DELETE FROM sessions WHERE id_hash=${digest('session', raw)}`
       res.setHeader('set-cookie', 'vd_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax')
       return res.status(204).end()
+    }
+    if (path === 'planning/rsvp' && req.method === 'PUT') {
+      const guest = await currentGuest(req)
+      if (!guest) return json(res, 401, { error: 'verified_session_required' })
+      const responses = req.body?.responses
+      if (!Array.isArray(responses) || !responses.length) return json(res, 400, { error: 'responses_required' })
+      await sql`INSERT INTO rsvps(guest_id,responses,updated_at) VALUES(${guest.id},${JSON.stringify(responses)}::jsonb,now()) ON CONFLICT(guest_id) DO UPDATE SET responses=excluded.responses,updated_at=now()`
+      await sql`INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,facts) VALUES(${crypto.randomUUID()},${guest.id},'rsvp.updated','rsvp',${guest.id},${JSON.stringify({ count: responses.length })}::jsonb)`
+      return json(res, 200, { status: 'saved' })
     }
     if (path === 'telegram/webhook' && req.method === 'POST') return await handleTelegram(req, res)
     if (path.startsWith('manager/')) {

@@ -23,28 +23,10 @@ describe('V&D wedding concierge', () => {
     expect(screen.getByText(/RSVP saved for your household/i)).toBeTruthy()
   })
 
-  it('separates the wedding manager from the guest experience', async () => {
+  it('keeps the wedding manager hidden from sample guests', async () => {
     render(<App />)
     await enterPreview()
-    fireEvent.click(screen.getByRole('button', { name: /wedding manager/i }))
-    expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy()
-    expect(screen.getByText(/Good evening, Harsh/i)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Vendors/i })).toBeTruthy()
-  })
-
-  it('opens functional manager search, alerts and add flows', async () => {
-    render(<App />)
-    await enterPreview()
-    fireEvent.click(screen.getByRole('button', { name: /wedding manager/i }))
-    fireEvent.click(screen.getByRole('button', { name: /search manager/i }))
-    expect(screen.getByRole('heading', { name: /search wedding manager/i })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /close/i }))
-    fireEvent.click(screen.getByRole('button', { name: /manager alerts/i }))
-    expect(screen.getByRole('heading', { name: /notifications/i })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /close/i }))
-    fireEvent.click(screen.getByRole('button', { name: /add new/i }))
-    fireEvent.change(screen.getByPlaceholderText(/what should this be called/i), { target: { value: 'New wedding task' } })
-    expect(screen.getByRole('button', { name: /save record/i }).hasAttribute('disabled')).toBe(false)
+    expect(screen.queryByRole('button', { name: /wedding manager/i })).toBeNull()
   })
 
   it('opens a sample wedding story as a real viewer', async () => {

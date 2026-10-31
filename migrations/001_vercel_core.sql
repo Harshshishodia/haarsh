@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS rsvps (
+  guest_id uuid PRIMARY KEY REFERENCES guests(id) ON DELETE CASCADE,
+  responses jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 INSERT INTO app_migrations(version, name)
 VALUES (1, 'vercel_core')
 ON CONFLICT (version) DO NOTHING;

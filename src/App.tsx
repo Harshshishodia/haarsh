@@ -30,7 +30,7 @@ function App() {
 
   return <div className="app-shell">
     {view === 'guest'
-      ? <GuestApp tab={guestTab} setTab={setGuestTab} openManager={() => setView('manager')} canManage={samplePreview||user?.role==='admin'} samplePreview={samplePreview} openConcierge={() => setConcierge(true)} notify={setToast}/>
+      ? <GuestApp tab={guestTab} setTab={setGuestTab} openManager={() => setView('manager')} canManage={user?.role==='admin'} samplePreview={samplePreview} openConcierge={() => setConcierge(true)} notify={setToast}/>
       : <Manager tab={managerTab} setTab={setManagerTab} back={() => setView('guest')} notify={setToast}/>}
     {concierge && <Concierge close={() => setConcierge(false)} navigate={tab => { setGuestTab(tab); setConcierge(false) }}/>} 
     {toast && <div className="toast"><Check size={17}/>{toast}</div>}
@@ -52,7 +52,7 @@ function GuestApp({tab,setTab,openManager,canManage,samplePreview,openConcierge,
     <header className="topbar">
       <button className="brand" onClick={() => setTab('home')}><span className="monogram">V<span>&</span>D</span><span><b>Vaishnavi & Dhruv</b><small>Our wedding home</small></span></button>
       <nav className="desktop-nav">{navItems.slice(0,4).map(i=><button className={tab===i.id?'active':''} onClick={()=>setTab(i.id)} key={i.id}>{i.label}</button>)}</nav>
-      <div className="top-actions"><button className="icon-button" aria-label="Notifications" onClick={()=>notify('No new notifications right now.')}><Bell size={19}/><i/></button>{canManage&&<button className="manager-link" onClick={openManager}>Wedding manager <ChevronRight size={16}/></button>}</div>
+      <div className="top-actions"><button className="icon-button" aria-label="Notifications" onClick={()=>notify('No new notifications right now.')}><Bell size={19}/><i/></button>{canManage&&<button className="manager-link" onClick={openManager}>Wedding manager <ChevronRight size={16}/></button>}{!samplePreview&&<button className="manager-link" onClick={async()=>{await fetch('/api/session',{method:'DELETE'});window.location.reload()}}>Log out</button>}</div>
     </header>
     <main className="guest-main">
       {tab === 'home' && <GuestHome setTab={setTab} samplePreview={samplePreview} openConcierge={openConcierge} notify={notify}/>}
