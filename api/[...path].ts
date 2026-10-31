@@ -195,6 +195,10 @@ async function handleTelegram(req: VercelRequest, res: VercelResponse) {
     await telegram('sendMessage', { chat_id: chatId, text: `Aapka V&D Wedding OTP ${otp} hai. Yeh 5 minutes mein expire hoga. Kisi se share na karein Ji.`, reply_markup: { remove_keyboard: true } })
     return json(res, 200, { received: true, matched: true })
   }
+  if (/^\+?[0-9\s()-]{7,20}$/.test(String(message.text || ''))) {
+    await telegram('sendMessage', { chat_id: chatId, text: 'Number type karne se ownership verify nahi hoti Ji. Neeche “Share my number securely” button tap kijiye. Telegram tabhi aapka apna number confirm karta hai.', reply_markup: { keyboard: [[{ text: 'Share my number securely', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } })
+    return json(res, 200, { received: true, needsContact: true })
+  }
   await telegram('sendMessage', { chat_id: chatId, text: 'Namaste Ji. Wedding login ke liye website se Telegram verification shuru kijiye. Main confirmed date, venue aur RSVP mein help kar sakta hoon.' })
   return json(res, 200, { received: true })
 }
