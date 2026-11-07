@@ -45,6 +45,9 @@ async function migrateCore() {
     `CREATE INDEX IF NOT EXISTS social_stories_feed_idx ON social_stories(status,expires_at,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS user_notifications (id uuid PRIMARY KEY,recipient_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,kind text NOT NULL,title text NOT NULL,body text NOT NULL DEFAULT '',target text,dedupe_key text UNIQUE,read_at timestamptz,created_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE INDEX IF NOT EXISTS user_notifications_recipient_idx ON user_notifications(recipient_id,created_at DESC)`,
+    `ALTER TABLE guests ADD COLUMN IF NOT EXISTS bio text NOT NULL DEFAULT ''`,
+    `ALTER TABLE guests ADD COLUMN IF NOT EXISTS avatar_data text`,
+    `CREATE TABLE IF NOT EXISTS social_follows (follower_id uuid REFERENCES guests(id) ON DELETE CASCADE,followed_id uuid REFERENCES guests(id) ON DELETE CASCADE,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(follower_id,followed_id),CHECK(follower_id<>followed_id))`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
   ]
   for (const statement of statements) await sql.query(statement)
@@ -109,7 +112,7 @@ async function currentGuest(req: VercelRequest) {
   const raw = cookies(req.headers.cookie).vd_session
   if (!raw) return null
   const rows = await sql`
-    SELECT g.id, g.display_name, g.side, g.relation, g.role, g.preferred_language
+    SELECT g.id, g.display_name, g.side, g.relation, g.role, g.preferred_language, g.bio, g.avatar_data
     FROM sessions s JOIN guests g ON g.id = s.guest_id
     WHERE s.id_hash = ${digest('session', raw)} AND s.expires_at > now()
   `
@@ -319,7 +322,12 @@ async function handleSocial(req:VercelRequest,res:VercelResponse,action:string){
     const id=String(req.query.id||'');if(req.method==='GET'){const rows=await sql`SELECT c.id,c.body,c.created_at,g.display_name FROM social_comments c JOIN guests g ON g.id=c.author_id WHERE c.post_id=${id} ORDER BY c.created_at LIMIT 200`;return json(res,200,{comments:rows})}if(req.method==='POST'){const body=String(req.body?.body||'').trim().slice(0,500);if(!body||/https?:\/\//i.test(body))return json(res,400,{error:'valid_comment_required'});const commentId=crypto.randomUUID();await sql`INSERT INTO social_comments(id,post_id,author_id,body) VALUES(${commentId},${id},${actor.id},${body})`;const owners=await sql`SELECT author_id FROM social_posts WHERE id=${id}`;if(owners[0]&&String(owners[0].author_id)!==String(actor.id))await addNotification(String(owners[0].author_id),'comment',`${actor.display_name} commented on your post`,body,'home',`comment:${commentId}`);return json(res,201,{comment:{id:commentId,body,display_name:actor.display_name,created_at:new Date().toISOString()}})}
   }
   if(action==='view'&&req.method==='PUT'){const id=String(req.query.id||'');await sql`INSERT INTO social_story_views(story_id,viewer_id) VALUES(${id},${actor.id}) ON CONFLICT DO NOTHING`;return json(res,200,{status:'viewed'})}
-  if(action==='profile'&&req.method==='GET'){const id=String(req.query.id||actor.id);const rows=await sql`SELECT id,display_name,side,relation,role,created_at FROM guests WHERE id=${id}`;if(!rows[0])return json(res,404,{error:'profile_not_found'});const counts=await sql`SELECT (SELECT count(*)::int FROM social_posts WHERE author_id=${id} AND status='published') posts,(SELECT count(*)::int FROM social_stories WHERE author_id=${id}) stories`;return json(res,200,{profile:{...rows[0],...counts[0]}})}
+  if(action==='profile'){
+    if(req.method==='GET'){const id=String(req.query.id||actor.id);const rows=await sql`SELECT id,display_name,side,relation,role,bio,avatar_data,created_at FROM guests WHERE id=${id}`;if(!rows[0])return json(res,404,{error:'profile_not_found'});const counts=await sql`SELECT (SELECT count(*)::int FROM social_posts WHERE author_id=${id} AND status='published') posts,(SELECT count(*)::int FROM social_stories WHERE author_id=${id}) stories,(SELECT count(*)::int FROM social_follows WHERE followed_id=${id}) followers,(SELECT count(*)::int FROM social_follows WHERE follower_id=${id}) following,EXISTS(SELECT 1 FROM social_follows WHERE follower_id=${actor.id} AND followed_id=${id}) followed`;const posts=await sql`SELECT id,caption,media_data,created_at FROM social_posts WHERE author_id=${id} AND status='published' ORDER BY created_at DESC LIMIT 30`;return json(res,200,{profile:{...rows[0],...counts[0],is_me:String(id)===String(actor.id),recent_posts:posts}})}
+    if(req.method==='PATCH'){const displayName=String(req.body?.displayName||actor.display_name).trim().slice(0,100),bio=String(req.body?.bio||'').trim().slice(0,300),relation=String(req.body?.relation||actor.relation).trim().slice(0,80),side=['bride','groom','shared'].includes(String(req.body?.side))?String(req.body.side):String(actor.side),avatar=String(req.body?.avatarData||'');if(!displayName||avatar&&(!avatar.startsWith('data:image/webp;base64,')||avatar.length>800_000))return json(res,400,{error:'invalid_profile'});await sql`UPDATE guests SET display_name=${displayName},bio=${bio},relation=${relation},side=${side},avatar_data=${avatar||null} WHERE id=${actor.id}`;return json(res,200,{status:'updated'})}
+  }
+  if(action==='follow'&&['PUT','DELETE'].includes(String(req.method))){const id=String(req.query.id||'');if(id===String(actor.id))return json(res,400,{error:'cannot_follow_self'});if(req.method==='PUT'){await sql`INSERT INTO social_follows(follower_id,followed_id) VALUES(${actor.id},${id}) ON CONFLICT DO NOTHING`;await addNotification(id,'follow',`${actor.display_name} followed your wedding profile`,'They can now find your public wedding moments more easily.','profile',`follow:${actor.id}:${id}`)}else await sql`DELETE FROM social_follows WHERE follower_id=${actor.id} AND followed_id=${id}`;return json(res,200,{status:req.method==='PUT'?'followed':'unfollowed'})}
+  if(action==='people'&&req.method==='GET'){const query=`%${String(req.query.q||'').trim().slice(0,80)}%`;const rows=await sql`SELECT id,display_name,side,relation,avatar_data FROM guests WHERE review_state='approved' AND (display_name ILIKE ${query} OR relation ILIKE ${query}) ORDER BY display_name LIMIT 30`;return json(res,200,{people:rows})}
   return json(res,404,{error:'social_route_not_found'})
 }
 
