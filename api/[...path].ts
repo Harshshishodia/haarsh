@@ -26,6 +26,8 @@ async function migrateCore() {
     `CREATE TABLE IF NOT EXISTS login_rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS audit_log (id uuid PRIMARY KEY, actor_id uuid REFERENCES guests(id) ON DELETE SET NULL, action text NOT NULL, entity_type text NOT NULL, entity_id text, facts jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE TABLE IF NOT EXISTS rsvps (guest_id uuid PRIMARY KEY REFERENCES guests(id) ON DELETE CASCADE, responses jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS manager_records (id uuid PRIMARY KEY, section text NOT NULL, title text NOT NULL, details text NOT NULL DEFAULT '', status text NOT NULL DEFAULT 'New', notes text NOT NULL DEFAULT '', created_by uuid REFERENCES guests(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE INDEX IF NOT EXISTS manager_records_section_idx ON manager_records(section, created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS baraat_sessions (id uuid PRIMARY KEY,label text NOT NULL,state text NOT NULL DEFAULT 'draft',tracker_id uuid REFERENCES guests(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE TABLE IF NOT EXISTS baraat_points (session_id uuid REFERENCES baraat_sessions(id) ON DELETE CASCADE,sequence integer NOT NULL,latitude double precision NOT NULL,longitude double precision NOT NULL,accuracy_m double precision NOT NULL,signal_state text NOT NULL,recorded_at timestamptz NOT NULL,PRIMARY KEY(session_id,sequence))`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
@@ -229,6 +231,33 @@ async function handleManager(req: VercelRequest, res: VercelResponse, path: stri
     const rows = await sql`SELECT id,display_name,side,relation,review_state,created_at FROM guests ORDER BY created_at DESC LIMIT 500`
     return json(res, 200, { guests: rows })
   }
+  if (path === 'manager' && req.method === 'GET') {
+    const section = String(req.query.section || '')
+    const allowed = ['requests','vendors','budget','seating','travel','content']
+    if (!allowed.includes(section)) return json(res, 400, { error: 'invalid_section' })
+    const rows = await sql`SELECT id,section,title,details,status,notes,created_at,updated_at FROM manager_records WHERE section=${section} ORDER BY created_at DESC LIMIT 500`
+    return json(res, 200, { records: rows })
+  }
+  if (path === 'manager' && req.method === 'POST') {
+    const section = String(req.body?.section || '')
+    const title = String(req.body?.title || '').trim().slice(0, 160)
+    const details = String(req.body?.details || '').trim().slice(0, 2000)
+    const allowed = ['requests','vendors','budget','seating','travel','content']
+    if (!allowed.includes(section) || !title) return json(res, 400, { error: 'valid_record_required' })
+    const id = crypto.randomUUID()
+    const rows = await sql`INSERT INTO manager_records(id,section,title,details,created_by) VALUES(${id},${section},${title},${details},${actor.id}) RETURNING id,section,title,details,status,notes,created_at,updated_at`
+    await sql`INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,facts) VALUES(${crypto.randomUUID()},${actor.id},'manager_record.created','manager_record',${id},${JSON.stringify({section})}::jsonb)`
+    return json(res, 201, { record: rows[0] })
+  }
+  if (path === 'manager' && req.method === 'PATCH') {
+    const id = String(req.body?.id || '')
+    const status = String(req.body?.status || '').trim().slice(0, 80)
+    const notes = String(req.body?.notes || '').trim().slice(0, 4000)
+    if (!/^[0-9a-f-]{36}$/.test(id) || !status) return json(res, 400, { error: 'valid_update_required' })
+    const rows = await sql`UPDATE manager_records SET status=${status},notes=${notes},updated_at=now() WHERE id=${id} RETURNING id,section,title,details,status,notes,created_at,updated_at`
+    if (!rows[0]) return json(res, 404, { error: 'record_not_found' })
+    return json(res, 200, { record: rows[0] })
+  }
   const match = path.match(/^manager\/guests\/([0-9a-f-]+)$/)
   if (match && req.method === 'PATCH') {
     const state = String(req.body?.reviewState || '')
@@ -305,8 +334,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await sql`INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,facts) VALUES(${crypto.randomUUID()},${guest.id},'rsvp.updated','rsvp',${guest.id},${JSON.stringify({ count: responses.length })}::jsonb)`
       return json(res, 200, { status: 'saved' })
     }
+    if (path === 'planning/rsvp' && req.method === 'GET') {
+      const guest = await currentGuest(req)
+      if (!guest) return json(res, 401, { error: 'verified_session_required' })
+      const rows = await sql`SELECT responses,updated_at FROM rsvps WHERE guest_id=${guest.id}`
+      return json(res, 200, { responses: rows[0]?.responses || [], updatedAt: rows[0]?.updated_at || null })
+    }
     if (path === 'telegram/webhook' && req.method === 'POST') return await handleTelegram(req, res)
-    if (path.startsWith('manager/')) {
+    if (path === 'manager' || path.startsWith('manager/')) {
       const managed = await handleManager(req, res, path)
       if (managed !== false) return managed
     }

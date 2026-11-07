@@ -66,6 +66,19 @@ CREATE TABLE IF NOT EXISTS rsvps (
   responses jsonb NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS manager_records (
+  id uuid PRIMARY KEY,
+  section text NOT NULL,
+  title text NOT NULL,
+  details text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'New',
+  notes text NOT NULL DEFAULT '',
+  created_by uuid REFERENCES guests(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS manager_records_section_idx ON manager_records(section, created_at DESC);
 CREATE TABLE IF NOT EXISTS baraat_sessions (id uuid PRIMARY KEY,label text NOT NULL,state text NOT NULL DEFAULT 'draft',tracker_id uuid REFERENCES guests(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS baraat_points (session_id uuid REFERENCES baraat_sessions(id) ON DELETE CASCADE,sequence integer NOT NULL,latitude double precision NOT NULL,longitude double precision NOT NULL,accuracy_m double precision NOT NULL,signal_state text NOT NULL,recorded_at timestamptz NOT NULL,PRIMARY KEY(session_id,sequence));
 
