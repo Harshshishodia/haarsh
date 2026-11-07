@@ -310,6 +310,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const managed = await handleManager(req, res, path)
       if (managed !== false) return managed
     }
+    if (path === 'baraat') {
+      const action=String(req.query.action||'live')
+      const id=String(req.query.id||'')
+      const trackingPath=action==='live'||action==='mine'?`baraat/${action}`:`baraat/sessions/${id}/${action}`
+      const tracked=await handleBaraat(req,res,trackingPath)
+      if(tracked!==false)return tracked
+    }
     if (path.startsWith('baraat/')) { const tracked=await handleBaraat(req,res,path);if(tracked!==false)return tracked }
     const auth = await handleAuth(req, res, path)
     if (auth !== false) return auth
