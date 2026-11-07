@@ -26,6 +26,8 @@ async function migrateCore() {
     `CREATE TABLE IF NOT EXISTS login_rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS audit_log (id uuid PRIMARY KEY, actor_id uuid REFERENCES guests(id) ON DELETE SET NULL, action text NOT NULL, entity_type text NOT NULL, entity_id text, facts jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE TABLE IF NOT EXISTS rsvps (guest_id uuid PRIMARY KEY REFERENCES guests(id) ON DELETE CASCADE, responses jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS baraat_sessions (id uuid PRIMARY KEY,label text NOT NULL,state text NOT NULL DEFAULT 'draft',tracker_id uuid REFERENCES guests(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS baraat_points (session_id uuid REFERENCES baraat_sessions(id) ON DELETE CASCADE,sequence integer NOT NULL,latitude double precision NOT NULL,longitude double precision NOT NULL,accuracy_m double precision NOT NULL,signal_state text NOT NULL,recorded_at timestamptz NOT NULL,PRIMARY KEY(session_id,sequence))`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
   ]
   for (const statement of statements) await sql.query(statement)
@@ -237,6 +239,39 @@ async function handleManager(req: VercelRequest, res: VercelResponse, path: stri
   return false
 }
 
+async function handleBaraat(req: VercelRequest, res: VercelResponse, path: string) {
+  if (!sql) return json(res, 503, { error: 'database_missing' })
+  const actor = await currentGuest(req)
+  if (!actor) return json(res, 401, { error: 'verified_session_required' })
+  if (path === 'baraat/live' && req.method === 'GET') {
+    const sessions = await sql`SELECT * FROM baraat_sessions WHERE state='live' AND expires_at>now() ORDER BY created_at DESC LIMIT 1`
+    if (!sessions[0]) return json(res, 200, { session:null,point:null,eta:null,distanceKm:null })
+    const points = await sql`SELECT * FROM baraat_points WHERE session_id=${sessions[0].id} ORDER BY sequence DESC LIMIT 1`
+    const point = points[0] ? {...points[0],stale:Date.now()-new Date(String(points[0].recorded_at)).getTime()>120000,ageSeconds:Math.max(0,Math.round((Date.now()-new Date(String(points[0].recorded_at)).getTime())/1000))} : null
+    return json(res, 200, { session:{id:sessions[0].id,label:sessions[0].label,state:sessions[0].state,expiresAt:sessions[0].expires_at},point,eta:null,distanceKm:null })
+  }
+  if (path === 'baraat/mine' && req.method === 'GET') {
+    let sessions = await sql`SELECT * FROM baraat_sessions WHERE tracker_id=${actor.id} AND expires_at>now() ORDER BY created_at DESC LIMIT 1`
+    if (!sessions[0] && actor.role === 'admin') {
+      const id=crypto.randomUUID();await sql`INSERT INTO baraat_sessions(id,label,tracker_id,expires_at) VALUES(${id},'Wedding Baraat',${actor.id},now()+interval '12 hours')`;sessions=await sql`SELECT * FROM baraat_sessions WHERE id=${id}`
+    }
+    return json(res, 200, { session:sessions[0]||null })
+  }
+  const action=path.match(/^baraat\/sessions\/([0-9a-f-]+)\/(start|stop|points)$/)
+  if (action) {
+    const owned=await sql`SELECT * FROM baraat_sessions WHERE id=${action[1]} AND tracker_id=${actor.id} AND expires_at>now()`
+    if (!owned[0]) return json(res,403,{error:'tracker_required'})
+    if (action[2]==='start'&&req.method==='POST'){await sql`UPDATE baraat_sessions SET state='live' WHERE id=${action[1]}`;return json(res,200,{status:'live'})}
+    if (action[2]==='stop'&&req.method==='POST'){await sql`UPDATE baraat_sessions SET state='stopped' WHERE id=${action[1]}`;return json(res,200,{status:'stopped'})}
+    if (action[2]==='points'&&req.method==='POST'){
+      const p=req.body||{};if(!Number.isFinite(p.latitude)||!Number.isFinite(p.longitude)||!Number.isFinite(p.accuracyM))return json(res,400,{error:'valid_point_required'})
+      await sql`INSERT INTO baraat_points(session_id,sequence,latitude,longitude,accuracy_m,signal_state,recorded_at) VALUES(${action[1]},${Number(p.sequence)},${p.latitude},${p.longitude},${p.accuracyM},${String(p.signalState||'unknown')},${String(p.recordedAt||new Date().toISOString())}) ON CONFLICT DO NOTHING`
+      return json(res,201,{status:'recorded'})
+    }
+  }
+  return false
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const path = Array.isArray(req.query.path) ? req.query.path.join('/') : String(req.query.path || '')
   try {
@@ -275,6 +310,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const managed = await handleManager(req, res, path)
       if (managed !== false) return managed
     }
+    if (path.startsWith('baraat/')) { const tracked=await handleBaraat(req,res,path);if(tracked!==false)return tracked }
     const auth = await handleAuth(req, res, path)
     if (auth !== false) return auth
     return json(res, 404, { error: 'route_not_found' })
