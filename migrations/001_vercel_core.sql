@@ -81,6 +81,23 @@ CREATE TABLE IF NOT EXISTS manager_records (
 CREATE INDEX IF NOT EXISTS manager_records_section_idx ON manager_records(section, created_at DESC);
 CREATE TABLE IF NOT EXISTS baraat_sessions (id uuid PRIMARY KEY,label text NOT NULL,state text NOT NULL DEFAULT 'draft',tracker_id uuid REFERENCES guests(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS baraat_points (session_id uuid REFERENCES baraat_sessions(id) ON DELETE CASCADE,sequence integer NOT NULL,latitude double precision NOT NULL,longitude double precision NOT NULL,accuracy_m double precision NOT NULL,signal_state text NOT NULL,recorded_at timestamptz NOT NULL,PRIMARY KEY(session_id,sequence));
+ALTER TABLE baraat_points ADD COLUMN IF NOT EXISTS speed_mps double precision;
+ALTER TABLE baraat_points ADD COLUMN IF NOT EXISTS heading double precision;
+ALTER TABLE baraat_points ADD COLUMN IF NOT EXISTS battery_percent double precision;
+CREATE TABLE IF NOT EXISTS baraat_config (
+  id integer PRIMARY KEY DEFAULT 1 CHECK (id=1),
+  start_lat double precision,
+  start_lng double precision,
+  destination_lat double precision,
+  destination_lng double precision,
+  destination_label text NOT NULL DEFAULT 'Wedding venue',
+  geofence_m integer NOT NULL DEFAULT 500,
+  share_enabled boolean NOT NULL DEFAULT false,
+  webhook_token_hash text,
+  updated_by uuid REFERENCES guests(id) ON DELETE SET NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO baraat_config(id) VALUES(1) ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO app_migrations(version, name)
 VALUES (1, 'vercel_core')

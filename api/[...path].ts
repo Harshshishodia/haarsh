@@ -30,6 +30,11 @@ async function migrateCore() {
     `CREATE INDEX IF NOT EXISTS manager_records_section_idx ON manager_records(section, created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS baraat_sessions (id uuid PRIMARY KEY,label text NOT NULL,state text NOT NULL DEFAULT 'draft',tracker_id uuid REFERENCES guests(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE TABLE IF NOT EXISTS baraat_points (session_id uuid REFERENCES baraat_sessions(id) ON DELETE CASCADE,sequence integer NOT NULL,latitude double precision NOT NULL,longitude double precision NOT NULL,accuracy_m double precision NOT NULL,signal_state text NOT NULL,recorded_at timestamptz NOT NULL,PRIMARY KEY(session_id,sequence))`,
+    `ALTER TABLE baraat_points ADD COLUMN IF NOT EXISTS speed_mps double precision`,
+    `ALTER TABLE baraat_points ADD COLUMN IF NOT EXISTS heading double precision`,
+    `ALTER TABLE baraat_points ADD COLUMN IF NOT EXISTS battery_percent double precision`,
+    `CREATE TABLE IF NOT EXISTS baraat_config (id integer PRIMARY KEY DEFAULT 1 CHECK (id=1),start_lat double precision,start_lng double precision,destination_lat double precision,destination_lng double precision,destination_label text NOT NULL DEFAULT 'Wedding venue',geofence_m integer NOT NULL DEFAULT 500,share_enabled boolean NOT NULL DEFAULT false,webhook_token_hash text,updated_by uuid REFERENCES guests(id) ON DELETE SET NULL,updated_at timestamptz NOT NULL DEFAULT now())`,
+    `INSERT INTO baraat_config(id) VALUES(1) ON CONFLICT(id) DO NOTHING`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
   ]
   for (const statement of statements) await sql.query(statement)
@@ -270,14 +275,44 @@ async function handleManager(req: VercelRequest, res: VercelResponse, path: stri
 
 async function handleBaraat(req: VercelRequest, res: VercelResponse, path: string) {
   if (!sql) return json(res, 503, { error: 'database_missing' })
+  if (path === 'baraat/ingest' && req.method === 'POST') {
+    const token=String(req.query.token||'')
+    const configs=await sql`SELECT * FROM baraat_config WHERE id=1`
+    const config=configs[0]
+    if(!config?.share_enabled||!token||!config.webhook_token_hash||!equal(digest('tracker',token),String(config.webhook_token_hash)))return json(res,401,{error:'tracker_token_required'})
+    const p=req.body||{};const lat=Number(p.lat??p.latitude),lng=Number(p.lon??p.longitude),accuracy=Number(p.acc??p.accuracy??50),battery=p.batt===undefined?null:Number(p.batt),speed=p.vel===undefined&&p.speed===undefined?null:Number(p.vel??p.speed),heading=p.cog===undefined&&p.heading===undefined?null:Number(p.cog??p.heading)
+    if((p._type&&p._type!=='location')||!Number.isFinite(lat)||Math.abs(lat)>90||!Number.isFinite(lng)||Math.abs(lng)>180||!Number.isFinite(accuracy)||accuracy<0||accuracy>5000)return json(res,400,{error:'valid_location_required'})
+    let sessions=await sql`SELECT * FROM baraat_sessions WHERE state='live' AND expires_at>now() ORDER BY created_at DESC LIMIT 1`
+    if(!sessions[0]){const id=crypto.randomUUID();await sql`INSERT INTO baraat_sessions(id,label,state,tracker_id,expires_at) VALUES(${id},'Wedding Baraat','live',${config.updated_by},now()+interval '12 hours')`;sessions=await sql`SELECT * FROM baraat_sessions WHERE id=${id}`}
+    const seqRows=await sql`SELECT COALESCE(MAX(sequence),0)+1 sequence FROM baraat_points WHERE session_id=${sessions[0].id}`;const sequence=Number(seqRows[0].sequence);const recordedAt=Number.isFinite(Number(p.tst))?new Date(Number(p.tst)*1000).toISOString():new Date().toISOString()
+    await sql`INSERT INTO baraat_points(session_id,sequence,latitude,longitude,accuracy_m,speed_mps,heading,battery_percent,signal_state,recorded_at) VALUES(${sessions[0].id},${sequence},${lat},${lng},${accuracy},${speed},${heading},${battery},'good',${recordedAt})`
+    return json(res,202,{status:'received',sequence})
+  }
   const actor = await currentGuest(req)
   if (!actor) return json(res, 401, { error: 'verified_session_required' })
+  if(path==='baraat/settings'){
+    if(actor.role!=='admin')return json(res,403,{error:'admin_required'})
+    if(req.method==='GET'){const rows=await sql`SELECT start_lat,start_lng,destination_lat,destination_lng,destination_label,geofence_m,share_enabled,updated_at,(webhook_token_hash IS NOT NULL) token_ready FROM baraat_config WHERE id=1`;return json(res,200,{settings:rows[0]})}
+    if(req.method==='PUT'){
+      const b=req.body||{};const values=[b.startLat,b.startLng,b.destinationLat,b.destinationLng].map(v=>v===''||v===null?null:Number(v));if(values.some((v,i)=>v!==null&&(!Number.isFinite(v)||(i%2===0?Math.abs(v)>90:Math.abs(v)>180))))return json(res,400,{error:'invalid_coordinates'})
+      const geofence=Math.max(100,Math.min(5000,Number(b.geofenceM)||500));const label=String(b.destinationLabel||'Wedding venue').trim().slice(0,100)||'Wedding venue'
+      await sql`UPDATE baraat_config SET start_lat=${values[0]},start_lng=${values[1]},destination_lat=${values[2]},destination_lng=${values[3]},destination_label=${label},geofence_m=${geofence},share_enabled=${Boolean(b.shareEnabled)},updated_by=${actor.id},updated_at=now() WHERE id=1`
+      return json(res,200,{status:'saved'})
+    }
+  }
+  if(path==='baraat/rotate'&&req.method==='POST'){
+    if(actor.role!=='admin')return json(res,403,{error:'admin_required'})
+    const token=crypto.randomBytes(32).toString('base64url');await sql`UPDATE baraat_config SET webhook_token_hash=${digest('tracker',token)},updated_by=${actor.id},updated_at=now() WHERE id=1`
+    const host=String(req.headers['x-forwarded-host']||req.headers.host||'haarsh-black.vercel.app');return json(res,200,{webhookUrl:`https://${host}/api/baraat?action=ingest&token=${encodeURIComponent(token)}`})
+  }
   if (path === 'baraat/live' && req.method === 'GET') {
     const sessions = await sql`SELECT * FROM baraat_sessions WHERE state='live' AND expires_at>now() ORDER BY created_at DESC LIMIT 1`
-    if (!sessions[0]) return json(res, 200, { session:null,point:null,eta:null,distanceKm:null })
-    const points = await sql`SELECT * FROM baraat_points WHERE session_id=${sessions[0].id} ORDER BY sequence DESC LIMIT 1`
-    const point = points[0] ? {...points[0],stale:Date.now()-new Date(String(points[0].recorded_at)).getTime()>120000,ageSeconds:Math.max(0,Math.round((Date.now()-new Date(String(points[0].recorded_at)).getTime())/1000))} : null
-    return json(res, 200, { session:{id:sessions[0].id,label:sessions[0].label,state:sessions[0].state,expiresAt:sessions[0].expires_at},point,eta:null,distanceKm:null })
+    const configs=await sql`SELECT start_lat,start_lng,destination_lat,destination_lng,destination_label,geofence_m FROM baraat_config WHERE id=1`;const config=configs[0]||{}
+    if (!sessions[0]) return json(res, 200, { session:null,point:null,route:[],destination:config,eta:null,distanceKm:null,arriving:false })
+    const points = await sql`SELECT * FROM baraat_points WHERE session_id=${sessions[0].id} ORDER BY sequence DESC LIMIT 100`;const latest=points[0]
+    const point = latest ? {...latest,stale:Date.now()-new Date(String(latest.recorded_at)).getTime()>120000,ageSeconds:Math.max(0,Math.round((Date.now()-new Date(String(latest.recorded_at)).getTime())/1000))} : null
+    const radians=(v:number)=>v*Math.PI/180;let distanceKm:null|number=null;if(point&&config.destination_lat!==null&&config.destination_lng!==null){const dLat=radians(Number(config.destination_lat)-Number(point.latitude)),dLng=radians(Number(config.destination_lng)-Number(point.longitude)),a=Math.sin(dLat/2)**2+Math.cos(radians(Number(point.latitude)))*Math.cos(radians(Number(config.destination_lat)))*Math.sin(dLng/2)**2;distanceKm=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}const eta=distanceKm!==null&&Number(point?.speed_mps)>0.5?`${Math.max(1,Math.round(distanceKm*1000/Number(point.speed_mps)/60))} min`:null
+    return json(res, 200, { session:{id:sessions[0].id,label:sessions[0].label,state:sessions[0].state,expiresAt:sessions[0].expires_at},point,route:points.reverse().map(row=>({latitude:row.latitude,longitude:row.longitude,recorded_at:row.recorded_at})),destination:config,eta,distanceKm:distanceKm===null?null:Number(distanceKm.toFixed(2)),arriving:distanceKm!==null&&distanceKm*1000<=Number(config.geofence_m) })
   }
   if (path === 'baraat/mine' && req.method === 'GET') {
     let sessions = await sql`SELECT * FROM baraat_sessions WHERE tracker_id=${actor.id} AND expires_at>now() ORDER BY created_at DESC LIMIT 1`
@@ -294,7 +329,7 @@ async function handleBaraat(req: VercelRequest, res: VercelResponse, path: strin
     if (action[2]==='stop'&&req.method==='POST'){await sql`UPDATE baraat_sessions SET state='stopped' WHERE id=${action[1]}`;return json(res,200,{status:'stopped'})}
     if (action[2]==='points'&&req.method==='POST'){
       const p=req.body||{};if(!Number.isFinite(p.latitude)||!Number.isFinite(p.longitude)||!Number.isFinite(p.accuracyM))return json(res,400,{error:'valid_point_required'})
-      await sql`INSERT INTO baraat_points(session_id,sequence,latitude,longitude,accuracy_m,signal_state,recorded_at) VALUES(${action[1]},${Number(p.sequence)},${p.latitude},${p.longitude},${p.accuracyM},${String(p.signalState||'unknown')},${String(p.recordedAt||new Date().toISOString())}) ON CONFLICT DO NOTHING`
+      await sql`INSERT INTO baraat_points(session_id,sequence,latitude,longitude,accuracy_m,speed_mps,heading,battery_percent,signal_state,recorded_at) VALUES(${action[1]},${Number(p.sequence)},${p.latitude},${p.longitude},${p.accuracyM},${p.speedMps??null},${p.heading??null},${p.batteryPercent??null},${String(p.signalState||'unknown')},${String(p.recordedAt||new Date().toISOString())}) ON CONFLICT DO NOTHING`
       return json(res,201,{status:'recorded'})
     }
   }
@@ -348,7 +383,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path === 'baraat') {
       const action=String(req.query.action||'live')
       const id=String(req.query.id||'')
-      const trackingPath=action==='live'||action==='mine'?`baraat/${action}`:`baraat/sessions/${id}/${action}`
+      const trackingPath=['live','mine','settings','rotate','ingest'].includes(action)?`baraat/${action}`:`baraat/sessions/${id}/${action}`
       const tracked=await handleBaraat(req,res,trackingPath)
       if(tracked!==false)return tracked
     }
