@@ -43,6 +43,8 @@ async function migrateCore() {
     `CREATE TABLE IF NOT EXISTS social_story_views (story_id uuid REFERENCES social_stories(id) ON DELETE CASCADE,viewer_id uuid REFERENCES guests(id) ON DELETE CASCADE,viewed_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(story_id,viewer_id))`,
     `CREATE INDEX IF NOT EXISTS social_posts_feed_idx ON social_posts(status,created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS social_stories_feed_idx ON social_stories(status,expires_at,created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS user_notifications (id uuid PRIMARY KEY,recipient_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,kind text NOT NULL,title text NOT NULL,body text NOT NULL DEFAULT '',target text,dedupe_key text UNIQUE,read_at timestamptz,created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE INDEX IF NOT EXISTS user_notifications_recipient_idx ON user_notifications(recipient_id,created_at DESC)`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
   ]
   for (const statement of statements) await sql.query(statement)
@@ -114,6 +116,18 @@ async function currentGuest(req: VercelRequest) {
   return rows[0] || null
 }
 
+async function addNotification(recipientId:string,kind:string,title:string,body:string,target:string|null=null,dedupeKey:string|null=null){
+  if(!sql)return;await sql`INSERT INTO user_notifications(id,recipient_id,kind,title,body,target,dedupe_key) VALUES(${crypto.randomUUID()},${recipientId},${kind},${title},${body},${target},${dedupeKey}) ON CONFLICT(dedupe_key) DO NOTHING`
+}
+
+async function notifyAdmins(kind:string,title:string,body:string,target:string|null=null,dedupePrefix:string|null=null){
+  if(!sql)return;const admins=await sql`SELECT id FROM guests WHERE role='admin'`;for(const admin of admins)await addNotification(String(admin.id),kind,title,body,target,dedupePrefix?`${dedupePrefix}:${admin.id}`:null)
+}
+
+async function notifyAllGuests(kind:string,title:string,body:string,target:string,dedupePrefix:string){
+  if(!sql)return;const guests=await sql`SELECT id FROM guests WHERE review_state='approved' OR role='admin'`;for(const guest of guests)await addNotification(String(guest.id),kind,title,body,target,`${dedupePrefix}:${guest.id}`)
+}
+
 async function handleAuth(req: VercelRequest, res: VercelResponse, path: string) {
   if (!sql || !pepper || !sessionSecret) return json(res, 503, { error: 'identity_service_not_configured' })
   if (path === 'auth/challenges' && req.method === 'POST') {
@@ -171,6 +185,7 @@ async function handleAuth(req: VercelRequest, res: VercelResponse, path: string)
       const relation = String(req.body?.relation || 'guest').slice(0, 80)
       const role = adminPhone && equal(digest('phone', adminPhone), String(challenge.phone_hash)) ? 'admin' : 'guest'
       await sql`INSERT INTO guests(id,phone_hash,display_name,side,relation,role) VALUES(${guestId},${challenge.phone_hash},${displayName},${side},${relation},${role})`
+      await notifyAdmins('guest_joined','New wedding profile',`${displayName} joined and is waiting for review.`,'manager:guests',`guest:${guestId}:joined`)
       guests = await sql`SELECT * FROM guests WHERE id=${guestId}`
     }
     if (adminPhone && equal(digest('phone', adminPhone), String(challenge.phone_hash)) && guests[0].role !== 'admin') {
@@ -276,6 +291,7 @@ async function handleManager(req: VercelRequest, res: VercelResponse, path: stri
     const state = String(req.body?.reviewState || '')
     if (!['approved','rejected','pending'].includes(state)) return json(res, 400, { error: 'invalid_review_state' })
     await sql`UPDATE guests SET review_state=${state} WHERE id=${match[1]}`
+    await addNotification(match[1],'profile_review',state==='approved'?'Your wedding profile is approved':'Profile review updated',state==='approved'?'You now have approved wedding-member access.':`Your profile status is now ${state}.`,'profile',`guest:${match[1]}:review:${state}`)
     return json(res, 200, { status: 'updated', reviewState: state })
   }
   return false
@@ -300,11 +316,18 @@ async function handleSocial(req:VercelRequest,res:VercelResponse,action:string){
   if(action==='like'&&['PUT','DELETE'].includes(String(req.method))){const id=String(req.query.id||'');if(req.method==='PUT')await sql`INSERT INTO social_post_likes(post_id,guest_id) VALUES(${id},${actor.id}) ON CONFLICT DO NOTHING`;else await sql`DELETE FROM social_post_likes WHERE post_id=${id} AND guest_id=${actor.id}`;return json(res,200,{status:req.method==='PUT'?'liked':'unliked'})}
   if(action==='save'&&['PUT','DELETE'].includes(String(req.method))){const id=String(req.query.id||'');if(req.method==='PUT')await sql`INSERT INTO social_post_saves(post_id,guest_id) VALUES(${id},${actor.id}) ON CONFLICT DO NOTHING`;else await sql`DELETE FROM social_post_saves WHERE post_id=${id} AND guest_id=${actor.id}`;return json(res,200,{status:req.method==='PUT'?'saved':'unsaved'})}
   if(action==='comments'){
-    const id=String(req.query.id||'');if(req.method==='GET'){const rows=await sql`SELECT c.id,c.body,c.created_at,g.display_name FROM social_comments c JOIN guests g ON g.id=c.author_id WHERE c.post_id=${id} ORDER BY c.created_at LIMIT 200`;return json(res,200,{comments:rows})}if(req.method==='POST'){const body=String(req.body?.body||'').trim().slice(0,500);if(!body||/https?:\/\//i.test(body))return json(res,400,{error:'valid_comment_required'});const commentId=crypto.randomUUID();await sql`INSERT INTO social_comments(id,post_id,author_id,body) VALUES(${commentId},${id},${actor.id},${body})`;return json(res,201,{comment:{id:commentId,body,display_name:actor.display_name,created_at:new Date().toISOString()}})}
+    const id=String(req.query.id||'');if(req.method==='GET'){const rows=await sql`SELECT c.id,c.body,c.created_at,g.display_name FROM social_comments c JOIN guests g ON g.id=c.author_id WHERE c.post_id=${id} ORDER BY c.created_at LIMIT 200`;return json(res,200,{comments:rows})}if(req.method==='POST'){const body=String(req.body?.body||'').trim().slice(0,500);if(!body||/https?:\/\//i.test(body))return json(res,400,{error:'valid_comment_required'});const commentId=crypto.randomUUID();await sql`INSERT INTO social_comments(id,post_id,author_id,body) VALUES(${commentId},${id},${actor.id},${body})`;const owners=await sql`SELECT author_id FROM social_posts WHERE id=${id}`;if(owners[0]&&String(owners[0].author_id)!==String(actor.id))await addNotification(String(owners[0].author_id),'comment',`${actor.display_name} commented on your post`,body,'home',`comment:${commentId}`);return json(res,201,{comment:{id:commentId,body,display_name:actor.display_name,created_at:new Date().toISOString()}})}
   }
   if(action==='view'&&req.method==='PUT'){const id=String(req.query.id||'');await sql`INSERT INTO social_story_views(story_id,viewer_id) VALUES(${id},${actor.id}) ON CONFLICT DO NOTHING`;return json(res,200,{status:'viewed'})}
   if(action==='profile'&&req.method==='GET'){const id=String(req.query.id||actor.id);const rows=await sql`SELECT id,display_name,side,relation,role,created_at FROM guests WHERE id=${id}`;if(!rows[0])return json(res,404,{error:'profile_not_found'});const counts=await sql`SELECT (SELECT count(*)::int FROM social_posts WHERE author_id=${id} AND status='published') posts,(SELECT count(*)::int FROM social_stories WHERE author_id=${id}) stories`;return json(res,200,{profile:{...rows[0],...counts[0]}})}
   return json(res,404,{error:'social_route_not_found'})
+}
+
+async function handleNotifications(req:VercelRequest,res:VercelResponse){
+  if(!sql)return json(res,503,{error:'database_missing'});const actor=await currentGuest(req);if(!actor)return json(res,401,{error:'verified_session_required'})
+  if(req.method==='GET'){const rows=await sql`SELECT id,kind,title,body,target,read_at,created_at FROM user_notifications WHERE recipient_id=${actor.id} ORDER BY created_at DESC LIMIT 50`;return json(res,200,{notifications:rows,unread:rows.filter(row=>!row.read_at).length})}
+  if(req.method==='PATCH'){const id=String(req.body?.id||'all');if(id==='all')await sql`UPDATE user_notifications SET read_at=COALESCE(read_at,now()) WHERE recipient_id=${actor.id}`;else await sql`UPDATE user_notifications SET read_at=COALESCE(read_at,now()) WHERE id=${id} AND recipient_id=${actor.id}`;return json(res,200,{status:'read'})}
+  return json(res,405,{error:'method_not_allowed'})
 }
 
 async function handleBaraat(req: VercelRequest, res: VercelResponse, path: string) {
@@ -316,10 +339,12 @@ async function handleBaraat(req: VercelRequest, res: VercelResponse, path: strin
     if(!config?.share_enabled||!token||!config.webhook_token_hash||!equal(digest('tracker',token),String(config.webhook_token_hash)))return json(res,401,{error:'tracker_token_required'})
     const p=req.body||{};const lat=Number(p.lat??p.latitude),lng=Number(p.lon??p.longitude),accuracy=Number(p.acc??p.accuracy??50),battery=p.batt===undefined?null:Number(p.batt),speed=p.vel===undefined&&p.speed===undefined?null:Number(p.vel??p.speed),heading=p.cog===undefined&&p.heading===undefined?null:Number(p.cog??p.heading)
     if((p._type&&p._type!=='location')||!Number.isFinite(lat)||Math.abs(lat)>90||!Number.isFinite(lng)||Math.abs(lng)>180||!Number.isFinite(accuracy)||accuracy<0||accuracy>5000)return json(res,400,{error:'valid_location_required'})
-    let sessions=await sql`SELECT * FROM baraat_sessions WHERE state='live' AND expires_at>now() ORDER BY created_at DESC LIMIT 1`
-    if(!sessions[0]){const id=crypto.randomUUID();await sql`INSERT INTO baraat_sessions(id,label,state,tracker_id,expires_at) VALUES(${id},'Wedding Baraat','live',${config.updated_by},now()+interval '12 hours')`;sessions=await sql`SELECT * FROM baraat_sessions WHERE id=${id}`}
+    let sessions=await sql`SELECT * FROM baraat_sessions WHERE state='live' AND expires_at>now() ORDER BY created_at DESC LIMIT 1`;let started=false
+    if(!sessions[0]){const id=crypto.randomUUID();await sql`INSERT INTO baraat_sessions(id,label,state,tracker_id,expires_at) VALUES(${id},'Wedding Baraat','live',${config.updated_by},now()+interval '12 hours')`;sessions=await sql`SELECT * FROM baraat_sessions WHERE id=${id}`;started=true}
     const seqRows=await sql`SELECT COALESCE(MAX(sequence),0)+1 sequence FROM baraat_points WHERE session_id=${sessions[0].id}`;const sequence=Number(seqRows[0].sequence);const recordedAt=Number.isFinite(Number(p.tst))?new Date(Number(p.tst)*1000).toISOString():new Date().toISOString()
     await sql`INSERT INTO baraat_points(session_id,sequence,latitude,longitude,accuracy_m,speed_mps,heading,battery_percent,signal_state,recorded_at) VALUES(${sessions[0].id},${sequence},${lat},${lng},${accuracy},${speed},${heading},${battery},'good',${recordedAt})`
+    if(started)await notifyAllGuests('baraat','The Baraat is live','Groom-side live location is now available on the private tracker.','track',`baraat:${sessions[0].id}:started`)
+    if(config.destination_lat!==null&&config.destination_lng!==null){const rad=(v:number)=>v*Math.PI/180,dLat=rad(Number(config.destination_lat)-lat),dLng=rad(Number(config.destination_lng)-lng),a=Math.sin(dLat/2)**2+Math.cos(rad(lat))*Math.cos(rad(Number(config.destination_lat)))*Math.sin(dLng/2)**2,distanceM=6371000*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));if(distanceM<=Number(config.geofence_m))await notifyAllGuests('baraat_arrival','The Baraat is arriving',`The procession is within ${config.geofence_m} metres of ${config.destination_label}.`,'track',`baraat:${sessions[0].id}:arriving`)}
     return json(res,202,{status:'received',sequence})
   }
   const actor = await currentGuest(req)
@@ -402,6 +427,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!Array.isArray(responses) || !responses.length) return json(res, 400, { error: 'responses_required' })
       await sql`INSERT INTO rsvps(guest_id,responses,updated_at) VALUES(${guest.id},${JSON.stringify(responses)}::jsonb,now()) ON CONFLICT(guest_id) DO UPDATE SET responses=excluded.responses,updated_at=now()`
       await sql`INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,facts) VALUES(${crypto.randomUUID()},${guest.id},'rsvp.updated','rsvp',${guest.id},${JSON.stringify({ count: responses.length })}::jsonb)`
+      await addNotification(String(guest.id),'rsvp','RSVP saved','Your latest household responses were saved successfully.','rsvp',`rsvp:${guest.id}:${Date.now()}`)
+      await notifyAdmins('rsvp','RSVP updated',`${guest.display_name} updated their household RSVP.`,'manager:guests')
       return json(res, 200, { status: 'saved' })
     }
     if (path === 'planning/rsvp' && req.method === 'GET') {
@@ -413,6 +440,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path === 'telegram/webhook' && req.method === 'POST') return await handleTelegram(req, res)
     if(path==='social')return await handleSocial(req,res,String(req.query.action||'feed'))
+    if(path==='notifications')return await handleNotifications(req,res)
     if (path === 'manager' || path.startsWith('manager/')) {
       const managed = await handleManager(req, res, path)
       if (managed !== false) return managed

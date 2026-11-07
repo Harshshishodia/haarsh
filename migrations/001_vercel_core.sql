@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS social_stories (id uuid PRIMARY KEY,author_id uuid NO
 CREATE TABLE IF NOT EXISTS social_story_views (story_id uuid REFERENCES social_stories(id) ON DELETE CASCADE,viewer_id uuid REFERENCES guests(id) ON DELETE CASCADE,viewed_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(story_id,viewer_id));
 CREATE INDEX IF NOT EXISTS social_posts_feed_idx ON social_posts(status,created_at DESC);
 CREATE INDEX IF NOT EXISTS social_stories_feed_idx ON social_stories(status,expires_at,created_at DESC);
+CREATE TABLE IF NOT EXISTS user_notifications (id uuid PRIMARY KEY,recipient_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,kind text NOT NULL,title text NOT NULL,body text NOT NULL DEFAULT '',target text,dedupe_key text UNIQUE,read_at timestamptz,created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS user_notifications_recipient_idx ON user_notifications(recipient_id,created_at DESC);
 
 INSERT INTO app_migrations(version, name)
 VALUES (1, 'vercel_core')
