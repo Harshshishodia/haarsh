@@ -344,8 +344,8 @@ async function handleBaraat(req: VercelRequest, res: VercelResponse, path: strin
     const configs=await sql`SELECT start_lat,start_lng,destination_lat,destination_lng,destination_label,geofence_m FROM baraat_config WHERE id=1`;const config=configs[0]||{}
     if (!sessions[0]) return json(res, 200, { session:null,point:null,route:[],destination:config,eta:null,distanceKm:null,arriving:false })
     const points = await sql`SELECT * FROM baraat_points WHERE session_id=${sessions[0].id} ORDER BY sequence DESC LIMIT 100`;const latest=points[0]
-    const point = latest ? {...latest,stale:Date.now()-new Date(String(latest.recorded_at)).getTime()>120000,ageSeconds:Math.max(0,Math.round((Date.now()-new Date(String(latest.recorded_at)).getTime())/1000))} : null
-    const radians=(v:number)=>v*Math.PI/180;let distanceKm:null|number=null;if(point&&config.destination_lat!==null&&config.destination_lng!==null){const dLat=radians(Number(config.destination_lat)-Number(point.latitude)),dLng=radians(Number(config.destination_lng)-Number(point.longitude)),a=Math.sin(dLat/2)**2+Math.cos(radians(Number(point.latitude)))*Math.cos(radians(Number(config.destination_lat)))*Math.sin(dLng/2)**2;distanceKm=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}const eta=distanceKm!==null&&Number(point?.speed_mps)>0.5?`${Math.max(1,Math.round(distanceKm*1000/Number(point.speed_mps)/60))} min`:null
+    const point:Record<string,unknown>|null = latest ? {...latest,stale:Date.now()-new Date(String(latest.recorded_at)).getTime()>120000,ageSeconds:Math.max(0,Math.round((Date.now()-new Date(String(latest.recorded_at)).getTime())/1000))} : null
+    const radians=(v:number)=>v*Math.PI/180;let distanceKm:null|number=null;if(point&&config.destination_lat!==null&&config.destination_lng!==null){const dLat=radians(Number(config.destination_lat)-Number(point.latitude)),dLng=radians(Number(config.destination_lng)-Number(point.longitude)),a=Math.sin(dLat/2)**2+Math.cos(radians(Number(point.latitude)))*Math.cos(radians(Number(config.destination_lat)))*Math.sin(dLng/2)**2;distanceKm=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}const speed=Number(point?.speed_mps);const eta=distanceKm!==null&&speed>0.5?`${Math.max(1,Math.round(distanceKm*1000/speed/60))} min`:null
     return json(res, 200, { session:{id:sessions[0].id,label:sessions[0].label,state:sessions[0].state,expiresAt:sessions[0].expires_at},point,route:points.reverse().map(row=>({latitude:row.latitude,longitude:row.longitude,recorded_at:row.recorded_at})),destination:config,eta,distanceKm:distanceKm===null?null:Number(distanceKm.toFixed(2)),arriving:distanceKm!==null&&distanceKm*1000<=Number(config.geofence_m) })
   }
   if (path === 'baraat/mine' && req.method === 'GET') {
@@ -395,6 +395,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(204).end()
     }
     if (path === 'planning/rsvp' && req.method === 'PUT') {
+      if(!sql)return json(res,503,{error:'database_missing'})
       const guest = await currentGuest(req)
       if (!guest) return json(res, 401, { error: 'verified_session_required' })
       const responses = req.body?.responses
@@ -404,6 +405,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return json(res, 200, { status: 'saved' })
     }
     if (path === 'planning/rsvp' && req.method === 'GET') {
+      if(!sql)return json(res,503,{error:'database_missing'})
       const guest = await currentGuest(req)
       if (!guest) return json(res, 401, { error: 'verified_session_required' })
       const rows = await sql`SELECT responses,updated_at FROM rsvps WHERE guest_id=${guest.id}`
