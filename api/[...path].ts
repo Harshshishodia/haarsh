@@ -35,6 +35,14 @@ async function migrateCore() {
     `ALTER TABLE baraat_points ADD COLUMN IF NOT EXISTS battery_percent double precision`,
     `CREATE TABLE IF NOT EXISTS baraat_config (id integer PRIMARY KEY DEFAULT 1 CHECK (id=1),start_lat double precision,start_lng double precision,destination_lat double precision,destination_lng double precision,destination_label text NOT NULL DEFAULT 'Wedding venue',geofence_m integer NOT NULL DEFAULT 500,share_enabled boolean NOT NULL DEFAULT false,webhook_token_hash text,updated_by uuid REFERENCES guests(id) ON DELETE SET NULL,updated_at timestamptz NOT NULL DEFAULT now())`,
     `INSERT INTO baraat_config(id) VALUES(1) ON CONFLICT(id) DO NOTHING`,
+    `CREATE TABLE IF NOT EXISTS social_posts (id uuid PRIMARY KEY,author_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,caption text NOT NULL DEFAULT '',event_tag text,media_data text,status text NOT NULL DEFAULT 'published',created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS social_post_likes (post_id uuid REFERENCES social_posts(id) ON DELETE CASCADE,guest_id uuid REFERENCES guests(id) ON DELETE CASCADE,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(post_id,guest_id))`,
+    `CREATE TABLE IF NOT EXISTS social_post_saves (post_id uuid REFERENCES social_posts(id) ON DELETE CASCADE,guest_id uuid REFERENCES guests(id) ON DELETE CASCADE,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(post_id,guest_id))`,
+    `CREATE TABLE IF NOT EXISTS social_comments (id uuid PRIMARY KEY,post_id uuid NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,author_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,body text NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS social_stories (id uuid PRIMARY KEY,author_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,media_data text,text_content text,event_tag text,status text NOT NULL DEFAULT 'published',expires_at timestamptz NOT NULL DEFAULT now()+interval '24 hours',created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS social_story_views (story_id uuid REFERENCES social_stories(id) ON DELETE CASCADE,viewer_id uuid REFERENCES guests(id) ON DELETE CASCADE,viewed_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(story_id,viewer_id))`,
+    `CREATE INDEX IF NOT EXISTS social_posts_feed_idx ON social_posts(status,created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS social_stories_feed_idx ON social_stories(status,expires_at,created_at DESC)`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
   ]
   for (const statement of statements) await sql.query(statement)
@@ -273,6 +281,32 @@ async function handleManager(req: VercelRequest, res: VercelResponse, path: stri
   return false
 }
 
+async function handleSocial(req:VercelRequest,res:VercelResponse,action:string){
+  if(!sql)return json(res,503,{error:'database_missing'});const actor=await currentGuest(req);if(!actor)return json(res,401,{error:'verified_session_required'})
+  if(action==='feed'&&req.method==='GET'){
+    const rows=await sql`SELECT p.id,p.author_id,p.caption,p.event_tag,p.media_data,p.created_at,g.display_name,g.side,(SELECT count(*)::int FROM social_post_likes l WHERE l.post_id=p.id) like_count,(SELECT count(*)::int FROM social_comments c WHERE c.post_id=p.id) comment_count,EXISTS(SELECT 1 FROM social_post_likes l WHERE l.post_id=p.id AND l.guest_id=${actor.id}) liked,EXISTS(SELECT 1 FROM social_post_saves s WHERE s.post_id=p.id AND s.guest_id=${actor.id}) saved FROM social_posts p JOIN guests g ON g.id=p.author_id WHERE p.status='published' OR p.author_id=${actor.id} ORDER BY p.created_at DESC LIMIT 100`
+    return json(res,200,{posts:rows.map(row=>({...row,media:row.media_data?[{id:`media-${row.id}`,media_type:'image',storage_key:row.media_data}]:[]}))})
+  }
+  if(action==='stories'&&req.method==='GET'){
+    const rows=await sql`SELECT s.id,s.author_id,s.media_data,s.text_content,s.event_tag,s.created_at,g.display_name,g.side,EXISTS(SELECT 1 FROM social_story_views v WHERE v.story_id=s.id AND v.viewer_id=${actor.id}) viewed FROM social_stories s JOIN guests g ON g.id=s.author_id WHERE s.status='published' AND s.expires_at>now() ORDER BY s.created_at DESC LIMIT 100`
+    return json(res,200,{stories:rows.map(row=>({...row,media_type:row.media_data?'image':'text',storage_key:row.media_data}))})
+  }
+  if(action==='post'&&req.method==='POST'){
+    const caption=String(req.body?.caption||'').trim().slice(0,2200),media=String(req.body?.mediaData||'');if(!caption&&!media)return json(res,400,{error:'content_required'});if(media&&(!media.startsWith('data:image/webp;base64,')||media.length>3_000_000))return json(res,400,{error:'invalid_media'});const id=crypto.randomUUID();const status=actor.role==='admin'?'published':'published';await sql`INSERT INTO social_posts(id,author_id,caption,event_tag,media_data,status) VALUES(${id},${actor.id},${caption},${String(req.body?.eventTag||'Wedding').slice(0,80)},${media||null},${status})`;return json(res,201,{id,status})
+  }
+  if(action==='story'&&req.method==='POST'){
+    const text=String(req.body?.text||'').trim().slice(0,500),media=String(req.body?.mediaData||'');if(!text&&!media)return json(res,400,{error:'content_required'});if(media&&(!media.startsWith('data:image/webp;base64,')||media.length>3_000_000))return json(res,400,{error:'invalid_media'});const id=crypto.randomUUID();await sql`INSERT INTO social_stories(id,author_id,media_data,text_content,event_tag) VALUES(${id},${actor.id},${media||null},${text},${String(req.body?.eventTag||'Wedding').slice(0,80)})`;return json(res,201,{id,status:'published'})
+  }
+  if(action==='like'&&['PUT','DELETE'].includes(String(req.method))){const id=String(req.query.id||'');if(req.method==='PUT')await sql`INSERT INTO social_post_likes(post_id,guest_id) VALUES(${id},${actor.id}) ON CONFLICT DO NOTHING`;else await sql`DELETE FROM social_post_likes WHERE post_id=${id} AND guest_id=${actor.id}`;return json(res,200,{status:req.method==='PUT'?'liked':'unliked'})}
+  if(action==='save'&&['PUT','DELETE'].includes(String(req.method))){const id=String(req.query.id||'');if(req.method==='PUT')await sql`INSERT INTO social_post_saves(post_id,guest_id) VALUES(${id},${actor.id}) ON CONFLICT DO NOTHING`;else await sql`DELETE FROM social_post_saves WHERE post_id=${id} AND guest_id=${actor.id}`;return json(res,200,{status:req.method==='PUT'?'saved':'unsaved'})}
+  if(action==='comments'){
+    const id=String(req.query.id||'');if(req.method==='GET'){const rows=await sql`SELECT c.id,c.body,c.created_at,g.display_name FROM social_comments c JOIN guests g ON g.id=c.author_id WHERE c.post_id=${id} ORDER BY c.created_at LIMIT 200`;return json(res,200,{comments:rows})}if(req.method==='POST'){const body=String(req.body?.body||'').trim().slice(0,500);if(!body||/https?:\/\//i.test(body))return json(res,400,{error:'valid_comment_required'});const commentId=crypto.randomUUID();await sql`INSERT INTO social_comments(id,post_id,author_id,body) VALUES(${commentId},${id},${actor.id},${body})`;return json(res,201,{comment:{id:commentId,body,display_name:actor.display_name,created_at:new Date().toISOString()}})}
+  }
+  if(action==='view'&&req.method==='PUT'){const id=String(req.query.id||'');await sql`INSERT INTO social_story_views(story_id,viewer_id) VALUES(${id},${actor.id}) ON CONFLICT DO NOTHING`;return json(res,200,{status:'viewed'})}
+  if(action==='profile'&&req.method==='GET'){const id=String(req.query.id||actor.id);const rows=await sql`SELECT id,display_name,side,relation,role,created_at FROM guests WHERE id=${id}`;if(!rows[0])return json(res,404,{error:'profile_not_found'});const counts=await sql`SELECT (SELECT count(*)::int FROM social_posts WHERE author_id=${id} AND status='published') posts,(SELECT count(*)::int FROM social_stories WHERE author_id=${id}) stories`;return json(res,200,{profile:{...rows[0],...counts[0]}})}
+  return json(res,404,{error:'social_route_not_found'})
+}
+
 async function handleBaraat(req: VercelRequest, res: VercelResponse, path: string) {
   if (!sql) return json(res, 503, { error: 'database_missing' })
   if (path === 'baraat/ingest' && req.method === 'POST') {
@@ -376,6 +410,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return json(res, 200, { responses: rows[0]?.responses || [], updatedAt: rows[0]?.updated_at || null })
     }
     if (path === 'telegram/webhook' && req.method === 'POST') return await handleTelegram(req, res)
+    if(path==='social')return await handleSocial(req,res,String(req.query.action||'feed'))
     if (path === 'manager' || path.startsWith('manager/')) {
       const managed = await handleManager(req, res, path)
       if (managed !== false) return managed
