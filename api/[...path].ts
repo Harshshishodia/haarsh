@@ -261,7 +261,7 @@ async function handleManager(req: VercelRequest, res: VercelResponse, path: stri
   const actor = await currentGuest(req)
   if (!actor || actor.role !== 'admin') return json(res, 403, { error: 'admin_required' })
   if (path === 'manager/guests' && req.method === 'GET') {
-    const rows = await sql`SELECT id,display_name,side,relation,review_state,created_at FROM guests ORDER BY created_at DESC LIMIT 500`
+    const rows = await sql`SELECT id,display_name,side,relation,review_state,invited_events,created_at FROM guests ORDER BY created_at DESC LIMIT 500`
     return json(res, 200, { guests: rows })
   }
   if (path === 'manager' && req.method === 'GET') {
@@ -295,7 +295,9 @@ async function handleManager(req: VercelRequest, res: VercelResponse, path: stri
   if (match && req.method === 'PATCH') {
     const state = String(req.body?.reviewState || '')
     if (!['approved','rejected','pending'].includes(state)) return json(res, 400, { error: 'invalid_review_state' })
-    await sql`UPDATE guests SET review_state=${state} WHERE id=${match[1]}`
+    const allowedEvents=['event-sagai','event-haldi','event-mehndi','event-wedding'];const invitedEvents=Array.isArray(req.body?.invitedEvents)?req.body.invitedEvents.map(String):[]
+    if(invitedEvents.some((event:string)=>!allowedEvents.includes(event))||new Set(invitedEvents).size!==invitedEvents.length)return json(res,400,{error:'invalid_invited_events'})
+    await sql`UPDATE guests SET review_state=${state},invited_events=${JSON.stringify(invitedEvents)}::jsonb WHERE id=${match[1]}`
     await addNotification(match[1],'profile_review',state==='approved'?'Your wedding profile is approved':'Profile review updated',state==='approved'?'You now have approved wedding-member access.':`Your profile status is now ${state}.`,'profile',`guest:${match[1]}:review:${state}`)
     return json(res, 200, { status: 'updated', reviewState: state })
   }
