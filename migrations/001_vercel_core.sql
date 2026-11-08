@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS telegram_updates (
   update_id bigint PRIMARY KEY,
   received_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS chat_channels (id text PRIMARY KEY,name text NOT NULL,kind text NOT NULL DEFAULT 'room',frozen boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS chat_messages (id uuid PRIMARY KEY,channel_id text NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,sender_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,client_message_id uuid NOT NULL UNIQUE,body text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS chat_messages_channel_idx ON chat_messages(channel_id,created_at DESC);
+INSERT INTO chat_channels(id,name,kind,frozen) VALUES ('channel-announcements','Announcements','announcements',false),('channel-everyone','Everyone','room',false),('channel-wedding','Wedding','room',false),('channel-bride','Bride’s side','room',false),('channel-groom','Groom’s side','room',false) ON CONFLICT(id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS login_rate_limits (
   key text PRIMARY KEY,

@@ -27,6 +27,10 @@ async function migrateCore() {
     `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_label text NOT NULL DEFAULT 'Web browser'`,
     `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now()`,
     `CREATE TABLE IF NOT EXISTS telegram_updates (update_id bigint PRIMARY KEY, received_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS chat_channels (id text PRIMARY KEY,name text NOT NULL,kind text NOT NULL DEFAULT 'room',frozen boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE TABLE IF NOT EXISTS chat_messages (id uuid PRIMARY KEY,channel_id text NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,sender_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE,client_message_id uuid NOT NULL UNIQUE,body text NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`,
+    `CREATE INDEX IF NOT EXISTS chat_messages_channel_idx ON chat_messages(channel_id,created_at DESC)`,
+    `INSERT INTO chat_channels(id,name,kind,frozen) VALUES ('channel-announcements','Announcements','announcements',false),('channel-everyone','Everyone','room',false),('channel-wedding','Wedding','room',false),('channel-bride','Bride’s side','room',false),('channel-groom','Groom’s side','room',false) ON CONFLICT(id) DO NOTHING`,
     `CREATE TABLE IF NOT EXISTS login_rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS audit_log (id uuid PRIMARY KEY, actor_id uuid REFERENCES guests(id) ON DELETE SET NULL, action text NOT NULL, entity_type text NOT NULL, entity_id text, facts jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE TABLE IF NOT EXISTS rsvps (guest_id uuid PRIMARY KEY REFERENCES guests(id) ON DELETE CASCADE, responses jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
@@ -341,6 +345,16 @@ async function handleNotifications(req:VercelRequest,res:VercelResponse){
   return json(res,405,{error:'method_not_allowed'})
 }
 
+async function handleChat(req:VercelRequest,res:VercelResponse,path:string){
+ if(!sql)return json(res,503,{error:'database_missing'});const actor=await currentGuest(req);if(!actor)return json(res,401,{error:'verified_session_required'})
+ if(path==='chat/channels'&&req.method==='GET'){const rows=await sql`SELECT id,name,kind,frozen,0::int unread_count FROM chat_channels WHERE id NOT IN ('channel-bride','channel-groom') OR id=${actor.side==='bride'?'channel-bride':actor.side==='groom'?'channel-groom':'channel-everyone'} ORDER BY CASE kind WHEN 'announcements' THEN 0 ELSE 1 END,name`;return json(res,200,{channels:rows})}
+ const match=path.match(/^chat\/channels\/([a-z0-9-]+)\/messages$/);if(!match)return false
+ const channelId=match[1];const channels=await sql`SELECT * FROM chat_channels WHERE id=${channelId}`;const channel=channels[0];if(!channel)return json(res,404,{error:'channel_not_found'});if(['channel-bride','channel-groom'].includes(channelId)&&channelId!==`channel-${actor.side}`&&actor.role!=='admin')return json(res,403,{error:'room_not_available'})
+ if(req.method==='GET'){const rows=await sql`SELECT m.id,m.sender_id,g.display_name,m.body,m.created_at FROM chat_messages m JOIN guests g ON g.id=m.sender_id WHERE m.channel_id=${channelId} ORDER BY m.created_at ASC LIMIT 300`;return json(res,200,{messages:rows})}
+ if(req.method==='POST'){if(channel.frozen)return json(res,423,{error:'room_paused'});if(channel.kind==='announcements'&&actor.role!=='admin')return json(res,403,{error:'admins_only'});const body=String(req.body?.body||'').trim().slice(0,1000),clientId=String(req.body?.clientMessageId||'');if(!body||!z.string().uuid().safeParse(clientId).success)return json(res,400,{error:'valid_message_required'});const id=crypto.randomUUID();const rows=await sql`INSERT INTO chat_messages(id,channel_id,sender_id,client_message_id,body) VALUES(${id},${channelId},${actor.id},${clientId},${body}) ON CONFLICT(client_message_id) DO UPDATE SET body=chat_messages.body RETURNING id,sender_id,body,created_at`;return json(res,201,{message:{...rows[0],display_name:actor.display_name}})}
+ return json(res,405,{error:'method_not_allowed'})
+}
+
 async function handleBaraat(req: VercelRequest, res: VercelResponse, path: string) {
   if (!sql) return json(res, 503, { error: 'database_missing' })
   if (path === 'baraat/ingest' && req.method === 'POST') {
@@ -468,6 +482,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path === 'telegram/webhook' && req.method === 'POST') return await handleTelegram(req, res)
     if(path==='social')return await handleSocial(req,res,String(req.query.action||'feed'))
     if(path==='notifications')return await handleNotifications(req,res)
+    if(path.startsWith('chat/')){const chatted=await handleChat(req,res,path);if(chatted!==false)return chatted}
     if (path === 'manager' || path.startsWith('manager/')) {
       const managed = await handleManager(req, res, path)
       if (managed !== false) return managed
