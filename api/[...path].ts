@@ -47,6 +47,7 @@ async function migrateCore() {
     `CREATE INDEX IF NOT EXISTS user_notifications_recipient_idx ON user_notifications(recipient_id,created_at DESC)`,
     `ALTER TABLE guests ADD COLUMN IF NOT EXISTS bio text NOT NULL DEFAULT ''`,
     `ALTER TABLE guests ADD COLUMN IF NOT EXISTS avatar_data text`,
+    `ALTER TABLE guests ADD COLUMN IF NOT EXISTS invited_events jsonb NOT NULL DEFAULT '["event-sagai","event-wedding"]'::jsonb`,
     `CREATE TABLE IF NOT EXISTS social_follows (follower_id uuid REFERENCES guests(id) ON DELETE CASCADE,followed_id uuid REFERENCES guests(id) ON DELETE CASCADE,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(follower_id,followed_id),CHECK(follower_id<>followed_id))`,
     `CREATE TABLE IF NOT EXISTS social_story_reactions (story_id uuid REFERENCES social_stories(id) ON DELETE CASCADE,guest_id uuid REFERENCES guests(id) ON DELETE CASCADE,emoji text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(story_id,guest_id))`,
     `INSERT INTO app_migrations(version,name) VALUES (1,'vercel_core') ON CONFLICT (version) DO NOTHING`,
@@ -85,7 +86,7 @@ function weddingAnswer(input: string) {
   if (!q || q === '/ask') return 'Ask me about the wedding date, venue, schedule, RSVP, privacy or Baraat tracking Ji.'
   if (/^(hi|hello|hey|namaste)\b/.test(q)) return 'Namaste Ji. Main wedding dates, venue, RSVP aur Baraat tracking mein help kar sakta hoon.'
   if (/when|date|wedding day|shaadi kab/.test(q)) return 'Celebrations 12–16 February 2027 ko Ghaziabad mein hain Ji. Wedding Tuesday, 16 February ko hai; time abhi to be confirmed hai.'
-  if (/venue|where|location|address|reach|direction/.test(q)) return 'Wedding venue Emerald Green, Govindpuram, Ghaziabad hai Ji. Baaki event venues abhi to be confirmed hain.'
+  if (/venue|where|location|address|reach|direction/.test(q)) return 'Wedding venue Emerald Green, Govindpuram, Ghaziabad hai Ji. Directions: https://www.google.com/maps/search/?api=1&query=Emerald+Green+Govindpuram+Ghaziabad . Baaki event venues abhi to be confirmed hain.'
   if (/rsvp|attend|coming/.test(q)) return 'RSVP website ke private wedding home mein login karke update kijiye Ji. Har household member aur event ka response save ho sakta hai.'
   if (/baraat|track|live/.test(q)) return 'Baraat tab authorised tracker ki live GPS position dikhata hai. Sharing band hote hi exact location unavailable ho jaati hai Ji.'
   if (/sagai/.test(q)) return 'Sagai 12 February 2027 ko planned hai; time aur venue abhi to be confirmed hain Ji.'
@@ -113,7 +114,7 @@ async function currentGuest(req: VercelRequest) {
   const raw = cookies(req.headers.cookie).vd_session
   if (!raw) return null
   const rows = await sql`
-    SELECT g.id, g.display_name, g.side, g.relation, g.role, g.preferred_language, g.bio, g.avatar_data
+    SELECT g.id, g.display_name, g.side, g.relation, g.role, g.preferred_language, g.bio, g.avatar_data, g.invited_events
     FROM sessions s JOIN guests g ON g.id = s.guest_id
     WHERE s.id_hash = ${digest('session', raw)} AND s.expires_at > now()
   `
@@ -200,7 +201,7 @@ async function handleAuth(req: VercelRequest, res: VercelResponse, path: string)
     await sql`INSERT INTO sessions(id_hash,guest_id,expires_at) VALUES(${digest('session', rawSession)},${guests[0].id},now()+interval '30 days')`
     await sql`UPDATE login_challenges SET status='exchanged' WHERE id=${challengeId}`
     res.setHeader('set-cookie', `vd_session=${encodeURIComponent(rawSession)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`)
-    return json(res, 200, { user: { id: guests[0].id, displayName: guests[0].display_name, side: guests[0].side, relation: guests[0].relation, role: guests[0].role } })
+    return json(res, 200, { user: { id: guests[0].id, displayName: guests[0].display_name, side: guests[0].side, relation: guests[0].relation, role: guests[0].role, invitedEvents: guests[0].invited_events || ['event-sagai','event-wedding'] } })
   }
   return false
 }
@@ -423,7 +424,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path === 'me' && req.method === 'GET') {
       const guest = await currentGuest(req)
-      return guest ? json(res, 200, { user: guest }) : json(res, 401, { error: 'verified_session_required' })
+      return guest ? json(res, 200, { user: { id:guest.id,displayName:guest.display_name,side:guest.side,relation:guest.relation,role:guest.role,invitedEvents:guest.invited_events } }) : json(res, 401, { error: 'verified_session_required' })
     }
     if (path === 'session' && req.method === 'DELETE') {
       const raw = cookies(req.headers.cookie).vd_session
@@ -437,6 +438,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!guest) return json(res, 401, { error: 'verified_session_required' })
       const responses = req.body?.responses
       if (!Array.isArray(responses) || !responses.length) return json(res, 400, { error: 'responses_required' })
+      const invitedEvents=Array.isArray(guest.invited_events)?guest.invited_events.map(String):[]
+      const validResponses=responses.every(item=>item&&invitedEvents.includes(String(item.eventId))&&['coming','maybe','not_coming'].includes(String(item.response))&&Number.isInteger(Number(item.adults))&&Number(item.adults)>=0&&Number(item.adults)<=20&&Number.isInteger(Number(item.kids))&&Number(item.kids)>=0&&Number(item.kids)<=20)
+      if(!validResponses||new Set(responses.map(item=>String(item.eventId))).size!==responses.length)return json(res,403,{error:'invited_events_only'})
       await sql`INSERT INTO rsvps(guest_id,responses,updated_at) VALUES(${guest.id},${JSON.stringify(responses)}::jsonb,now()) ON CONFLICT(guest_id) DO UPDATE SET responses=excluded.responses,updated_at=now()`
       await sql`INSERT INTO audit_log(id,actor_id,action,entity_type,entity_id,facts) VALUES(${crypto.randomUUID()},${guest.id},'rsvp.updated','rsvp',${guest.id},${JSON.stringify({ count: responses.length })}::jsonb)`
       await addNotification(String(guest.id),'rsvp','RSVP saved','Your latest household responses were saved successfully.','rsvp',`rsvp:${guest.id}:${Date.now()}`)
@@ -448,7 +452,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const guest = await currentGuest(req)
       if (!guest) return json(res, 401, { error: 'verified_session_required' })
       const rows = await sql`SELECT responses,updated_at FROM rsvps WHERE guest_id=${guest.id}`
-      return json(res, 200, { responses: rows[0]?.responses || [], updatedAt: rows[0]?.updated_at || null })
+      return json(res, 200, { responses: rows[0]?.responses || [], invitedEvents:guest.invited_events || [], updatedAt: rows[0]?.updated_at || null })
+    }
+    if(path==='calendar.ics'&&req.method==='GET'){
+      const guest=await currentGuest(req);if(!guest)return json(res,401,{error:'verified_session_required'})
+      const invited=Array.isArray(guest.invited_events)?guest.invited_events.map(String):[]
+      const calendarEvents=[['event-sagai','20270212','Sagai','Venue to be confirmed'],['event-haldi','20270214','Haldi','Venue to be confirmed'],['event-mehndi','20270215','Mehndi','Venue to be confirmed'],['event-wedding','20270216','Wedding','Emerald Green, Govindpuram, Ghaziabad']].filter(item=>invited.includes(item[0]))
+      const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//VD Wedding//Private Pass//EN','CALSCALE:GREGORIAN',...calendarEvents.flatMap(item=>['BEGIN:VEVENT',`UID:${item[0]}@vd-wedding`,`DTSTART;VALUE=DATE:${item[1]}`,`SUMMARY:Vaishnavi & Dhruv — ${item[2]}`,`LOCATION:${item[3]}`,'STATUS:CONFIRMED','END:VEVENT']),'END:VCALENDAR']
+      res.setHeader('cache-control','private, no-store');res.setHeader('content-type','text/calendar; charset=utf-8');res.setHeader('content-disposition','attachment; filename="vaishnavi-dhruv-wedding.ics"');return res.status(200).send(lines.join('\r\n'))
     }
     if (path === 'telegram/webhook' && req.method === 'POST') return await handleTelegram(req, res)
     if(path==='social')return await handleSocial(req,res,String(req.query.action||'feed'))

@@ -11,7 +11,8 @@ describe('V&D wedding concierge', () => {
     await enterPreview()
     fireEvent.click(screen.getByRole('button', { name: /open your invitation/i }))
     expect(screen.getByRole('heading', { name: /your wedding pass/i })).toBeTruthy()
-    expect(screen.getByText(/Sharma family/i)).toBeTruthy()
+    expect(screen.getByText(/Example family/i)).toBeTruthy()
+    expect(screen.getByText(/This example contains no real guest data/i)).toBeTruthy()
   })
 
   it('saves an editable household RSVP', async () => {
@@ -20,7 +21,9 @@ describe('V&D wedding concierge', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'RSVP' })[0])
     fireEvent.click(screen.getAllByRole('button', { name: 'Coming' })[0])
     fireEvent.click(screen.getByRole('button', { name: /save my RSVP/i }))
-    expect(screen.getByText(/RSVP saved for your household/i)).toBeTruthy()
+    expect(screen.queryByText('Haldi')).toBeNull()
+    expect(screen.queryByText('Mehndi')).toBeNull()
+    expect(screen.getByText(/Sample RSVP saved only on this device/i)).toBeTruthy()
   })
 
   it('keeps the wedding manager hidden from sample guests', async () => {

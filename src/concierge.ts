@@ -13,7 +13,7 @@ export function conciergeReply(question: string, language: ConciergeLanguage = '
   else if (/mehndi/.test(q)) answer = 'Mehndi is planned for 15 February 2027. Its time and venue are still to be confirmed.'
   else if (/sangeet/.test(q)) answer = unknown
   else if (/time|kitne baje|timing/.test(q)) answer = 'The event times are still to be confirmed. The wedding desk will publish them after the family confirms them.'
-  else if (/venue|where|location|address|reach|direction/.test(q)) answer = 'The wedding venue is Emerald Green, Govindpuram, Ghaziabad. Other event venues are still to be confirmed. Please use the directions on your private pass before travelling.'
+  else if (/venue|where|location|address|reach|direction/.test(q)) answer = 'The wedding venue is Emerald Green, Govindpuram, Ghaziabad. Open directions: https://www.google.com/maps/search/?api=1&query=Emerald+Green+Govindpuram+Ghaziabad . Other event venues are still to be confirmed.'
   else if (/rsvp|coming|attend/.test(q)) answer = 'Open RSVP from the wedding home, choose each household member’s attendance, and save it. You can update it again before the family closes RSVPs.'
   else if (/baraat|track|live/.test(q)) answer = 'Open Baraat from the top menu for the family-approved live route and status. Live location appears only while an authorised tracker is sharing it.'
   else if (/phone|number|privacy|data/.test(q)) answer = 'Guest phone numbers stay private. Verified members may see names and wedding activity, and you can request a data export or deletion from your profile.'

@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS user_notifications (id uuid PRIMARY KEY,recipient_id 
 CREATE INDEX IF NOT EXISTS user_notifications_recipient_idx ON user_notifications(recipient_id,created_at DESC);
 ALTER TABLE guests ADD COLUMN IF NOT EXISTS bio text NOT NULL DEFAULT '';
 ALTER TABLE guests ADD COLUMN IF NOT EXISTS avatar_data text;
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS invited_events jsonb NOT NULL DEFAULT '["event-sagai","event-wedding"]'::jsonb;
 CREATE TABLE IF NOT EXISTS social_follows (follower_id uuid REFERENCES guests(id) ON DELETE CASCADE,followed_id uuid REFERENCES guests(id) ON DELETE CASCADE,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(follower_id,followed_id),CHECK(follower_id<>followed_id));
 CREATE TABLE IF NOT EXISTS social_story_reactions (story_id uuid REFERENCES social_stories(id) ON DELETE CASCADE,guest_id uuid REFERENCES guests(id) ON DELETE CASCADE,emoji text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(story_id,guest_id));
 
