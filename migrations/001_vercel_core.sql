@@ -111,6 +111,7 @@ CREATE INDEX IF NOT EXISTS user_notifications_recipient_idx ON user_notification
 ALTER TABLE guests ADD COLUMN IF NOT EXISTS bio text NOT NULL DEFAULT '';
 ALTER TABLE guests ADD COLUMN IF NOT EXISTS avatar_data text;
 CREATE TABLE IF NOT EXISTS social_follows (follower_id uuid REFERENCES guests(id) ON DELETE CASCADE,followed_id uuid REFERENCES guests(id) ON DELETE CASCADE,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(follower_id,followed_id),CHECK(follower_id<>followed_id));
+CREATE TABLE IF NOT EXISTS social_story_reactions (story_id uuid REFERENCES social_stories(id) ON DELETE CASCADE,guest_id uuid REFERENCES guests(id) ON DELETE CASCADE,emoji text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(story_id,guest_id));
 
 INSERT INTO app_migrations(version, name)
 VALUES (1, 'vercel_core')
