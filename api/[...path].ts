@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { neon } from '@neondatabase/serverless'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { z } from 'zod'
+import { conciergeReply } from '../src/concierge.js'
 
 const databaseUrl = process.env.DATABASE_URL
 const sql = databaseUrl ? neon(databaseUrl) : null
@@ -83,17 +84,8 @@ async function telegram(method: string, payload: unknown) {
 
 function weddingAnswer(input: string) {
   const q = input.trim().toLowerCase().replace(/^\/ask\s*/, '')
-  if (!q || q === '/ask') return 'Ask me about the wedding date, venue, schedule, RSVP, privacy or Baraat tracking Ji.'
-  if (/^(hi|hello|hey|namaste)\b/.test(q)) return 'Namaste Ji. Main wedding dates, venue, RSVP aur Baraat tracking mein help kar sakta hoon.'
-  if (/when|date|wedding day|shaadi kab/.test(q)) return 'Celebrations 12–16 February 2027 ko Ghaziabad mein hain Ji. Wedding Tuesday, 16 February ko hai; time abhi to be confirmed hai.'
-  if (/venue|where|location|address|reach|direction/.test(q)) return 'Wedding venue Emerald Green, Govindpuram, Ghaziabad hai Ji. Directions: https://www.google.com/maps/search/?api=1&query=Emerald+Green+Govindpuram+Ghaziabad . Baaki event venues abhi to be confirmed hain.'
-  if (/rsvp|attend|coming/.test(q)) return 'RSVP website ke private wedding home mein login karke update kijiye Ji. Har household member aur event ka response save ho sakta hai.'
-  if (/baraat|track|live/.test(q)) return 'Baraat tab authorised tracker ki live GPS position dikhata hai. Sharing band hote hi exact location unavailable ho jaati hai Ji.'
-  if (/sagai/.test(q)) return 'Sagai 12 February 2027 ko planned hai; time aur venue abhi to be confirmed hain Ji.'
-  if (/haldi/.test(q)) return 'Haldi 14 February 2027 ko planned hai; time aur venue abhi to be confirmed hain Ji.'
-  if (/mehndi/.test(q)) return 'Mehndi 15 February 2027 ko planned hai; time aur venue abhi to be confirmed hain Ji.'
-  if (/privacy|phone|number|data/.test(q)) return 'Guest phone numbers private rehte hain. Verified profile se data export ya deletion request ki ja sakti hai Ji.'
-  return 'Is baat ka confirmed answer abhi available nahi hai Ji. Main guess nahi karunga; family desk se confirmation lijiye.'
+  if (!q || q === '/ask') return 'Ask me naturally about the wedding date, venue, schedule, RSVP, privacy or Baraat tracking Ji.'
+  return conciergeReply(q, 'Hinglish')
 }
 
 async function rateLimited(key: string) {
