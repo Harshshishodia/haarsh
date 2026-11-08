@@ -214,9 +214,18 @@ async function handleTelegram(req: VercelRequest, res: VercelResponse) {
   if (!Number.isSafeInteger(updateId)) return json(res, 400, { error: 'update_id_required' })
   const inserted = await sql`INSERT INTO telegram_updates(update_id) VALUES(${updateId}) ON CONFLICT DO NOTHING RETURNING update_id`
   if (!inserted.length) return json(res, 200, { received: true, duplicate: true })
-  const message = req.body?.message
+  const message = req.body?.message || req.body?.edited_message
   if (!message?.chat?.id || message.chat.type !== 'private') return json(res, 200, { received: true, ignored: true })
   const chatId = String(message.chat.id)
+  if(message.location){
+    const owners=await sql`SELECT g.* FROM login_challenges c JOIN guests g ON g.phone_hash=c.phone_hash WHERE c.telegram_chat_id=${chatId} AND c.telegram_user_id=${String(message.from.id)} AND c.status='exchanged' ORDER BY c.created_at DESC LIMIT 1`
+    const owner=owners[0];if(!owner||owner.role!=='admin'){await telegram('sendMessage',{chat_id:chatId,text:'Live Baraat location sirf verified family operator share kar sakta hai Ji.'});return json(res,200,{received:true,rejected:true})}
+    await sql`INSERT INTO baraat_config(id,share_enabled,updated_by) VALUES(1,true,${owner.id}) ON CONFLICT(id) DO UPDATE SET share_enabled=true,updated_by=${owner.id},updated_at=now()`
+    let sessions=await sql`SELECT * FROM baraat_sessions WHERE state='live' AND expires_at>now() ORDER BY created_at DESC LIMIT 1`;if(!sessions[0]){const id=crypto.randomUUID();await sql`INSERT INTO baraat_sessions(id,label,state,tracker_id,expires_at) VALUES(${id},'Wedding Baraat','live',${owner.id},now()+interval '12 hours')`;sessions=await sql`SELECT * FROM baraat_sessions WHERE id=${id}`;await notifyAllGuests('baraat','The Baraat is live','Groom-side Telegram live location is now available.','track',`baraat:${id}:started`)}
+    const seq=await sql`SELECT COALESCE(MAX(sequence),0)+1 sequence FROM baraat_points WHERE session_id=${sessions[0].id}`;await sql`INSERT INTO baraat_points(session_id,sequence,latitude,longitude,accuracy_m,heading,signal_state,recorded_at) VALUES(${sessions[0].id},${Number(seq[0].sequence)},${Number(message.location.latitude)},${Number(message.location.longitude)},${Number(message.location.horizontal_accuracy||25)},${message.location.heading??null},'good',now()) ON CONFLICT DO NOTHING`
+    if(req.body?.message)await telegram('sendMessage',{chat_id:chatId,text:'Baraat live location website tracker se connect ho gayi Ji. Telegram sharing chalu rakhiye.'})
+    return json(res,200,{received:true,location:true})
+  }
   const start = String(message.text || '').match(/^\/start\s+([A-Za-z0-9_-]{40,60})$/)
   if (start) {
     const rows = await sql`SELECT id FROM login_challenges WHERE start_token_hash=${digest('start', start[1])} AND status='pending' AND expires_at>now()`
@@ -376,7 +385,7 @@ async function handleBaraat(req: VercelRequest, res: VercelResponse, path: strin
   if (!actor) return json(res, 401, { error: 'verified_session_required' })
   if(path==='baraat/settings'){
     if(actor.role!=='admin')return json(res,403,{error:'admin_required'})
-    if(req.method==='GET'){const rows=await sql`SELECT start_lat,start_lng,destination_lat,destination_lng,destination_label,geofence_m,share_enabled,updated_at,(webhook_token_hash IS NOT NULL) token_ready FROM baraat_config WHERE id=1`;return json(res,200,{settings:rows[0]})}
+    if(req.method==='GET'){await sql`INSERT INTO baraat_config(id) VALUES(1) ON CONFLICT(id) DO NOTHING`;const rows=await sql`SELECT start_lat,start_lng,destination_lat,destination_lng,destination_label,geofence_m,share_enabled,updated_at,(webhook_token_hash IS NOT NULL) token_ready FROM baraat_config WHERE id=1`;return json(res,200,{settings:rows[0]})}
     if(req.method==='PUT'){
       const b=req.body||{};const values=[b.startLat,b.startLng,b.destinationLat,b.destinationLng].map(v=>v===''||v===null?null:Number(v));if(values.some((v,i)=>v!==null&&(!Number.isFinite(v)||(i%2===0?Math.abs(v)>90:Math.abs(v)>180))))return json(res,400,{error:'invalid_coordinates'})
       const geofence=Math.max(100,Math.min(5000,Number(b.geofenceM)||500));const label=String(b.destinationLabel||'Wedding venue').trim().slice(0,100)||'Wedding venue'
