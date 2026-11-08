@@ -21,3 +21,4 @@
 .concierge-prompts button{white-space:nowrap;border:1px solid #d7bea1;background:#fffaf2;color:#6f3140;border-radius:999px;padding:.48rem .72rem;font:inherit;font-size:.78rem;cursor:pointer}
 .concierge-action{display:inline-flex;align-items:center;gap:.2rem;border:1px solid #ddcdb9;border-radius:.5rem;padding:.45rem .65rem;color:#6f3140;background:#fff;text-decoration:none;font-size:.8rem;font-weight:650}
 .concierge-input button:disabled{opacity:.45;cursor:not-allowed}
+.device-list{display:grid;gap:.65rem;margin:1.2rem 0}.device-list>div{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem;border:1px solid var(--line,#eadfce);border-radius:.75rem}.device-list span{display:grid;gap:.2rem}.device-list small{color:var(--muted,#806f63);max-width:19rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.device-list i{font-style:normal;color:#317052;font-size:.78rem;font-weight:700}

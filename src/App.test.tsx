@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
 describe('V&D wedding concierge', () => {
+  afterEach(()=>vi.unstubAllGlobals())
   async function enterPreview() {
     fireEvent.click(await screen.findByRole('button', { name: /explore the sample/i }))
   }
@@ -48,5 +49,20 @@ describe('V&D wedding concierge', () => {
     fireEvent.change(input, { target: { value: 'What time is Sangeet?' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(screen.getByText(/do not have a confirmed answer/i)).toBeTruthy()
+  })
+
+  it('never shows the sample identity to an authenticated guest', async () => {
+    const user={id:'guest-a',displayName:'Asha Tyagi',role:'guest',side:'bride',relation:'Friend',invitedEvents:['event-wedding']}
+    vi.stubGlobal('fetch',vi.fn(async(input:string|URL|Request)=>{
+      const url=String(input)
+      if(url.endsWith('/api/me'))return new Response(JSON.stringify({user}),{status:200})
+      if(url.includes('social?action=profile'))return new Response('',{status:503})
+      if(url.includes('/api/notifications'))return new Response(JSON.stringify({notifications:[]}),{status:200})
+      return new Response(JSON.stringify({}),{status:404})
+    }))
+    render(<App />)
+    fireEvent.click((await screen.findAllByRole('button',{name:'You'}))[0])
+    expect(await screen.findByRole('heading',{name:'Asha Tyagi'})).toBeTruthy()
+    await waitFor(()=>expect(screen.queryByText('Rohan Sharma')).toBeNull())
   })
 })

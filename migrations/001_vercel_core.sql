@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_id uuid DEFAULT gen_random_uuid();
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_label text NOT NULL DEFAULT 'Web browser';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS telegram_updates (
   update_id bigint PRIMARY KEY,

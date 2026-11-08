@@ -23,6 +23,9 @@ async function migrateCore() {
     `CREATE TABLE IF NOT EXISTS login_challenges (id uuid PRIMARY KEY, phone_hash text NOT NULL, code_hash text NOT NULL, start_token_hash text UNIQUE NOT NULL, status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','otp_sent','exchanged','expired','locked')), telegram_chat_id text, telegram_user_id text, attempts integer NOT NULL DEFAULT 0, expires_at timestamptz NOT NULL, consented_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE INDEX IF NOT EXISTS login_challenges_phone_idx ON login_challenges(phone_hash, created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS sessions (id_hash text PRIMARY KEY, guest_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE, expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`,
+    `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_id uuid DEFAULT gen_random_uuid()`,
+    `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_label text NOT NULL DEFAULT 'Web browser'`,
+    `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now()`,
     `CREATE TABLE IF NOT EXISTS telegram_updates (update_id bigint PRIMARY KEY, received_at timestamptz NOT NULL DEFAULT now())`,
     `CREATE TABLE IF NOT EXISTS login_rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS audit_log (id uuid PRIMARY KEY, actor_id uuid REFERENCES guests(id) ON DELETE SET NULL, action text NOT NULL, entity_type text NOT NULL, entity_id text, facts jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now())`,
@@ -190,7 +193,8 @@ async function handleAuth(req: VercelRequest, res: VercelResponse, path: string)
       guests = await sql`SELECT * FROM guests WHERE id=${guests[0].id}`
     }
     const rawSession = crypto.randomBytes(32).toString('base64url')
-    await sql`INSERT INTO sessions(id_hash,guest_id,expires_at) VALUES(${digest('session', rawSession)},${guests[0].id},now()+interval '30 days')`
+    const deviceLabel=String(req.headers['user-agent']||'Web browser').slice(0,180)
+    await sql`INSERT INTO sessions(id_hash,guest_id,expires_at,device_id,device_label,last_seen_at) VALUES(${digest('session', rawSession)},${guests[0].id},now()+interval '30 days',${crypto.randomUUID()},${deviceLabel},now())`
     await sql`UPDATE login_challenges SET status='exchanged' WHERE id=${challengeId}`
     res.setHeader('set-cookie', `vd_session=${encodeURIComponent(rawSession)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`)
     return json(res, 200, { user: { id: guests[0].id, displayName: guests[0].display_name, side: guests[0].side, relation: guests[0].relation, role: guests[0].role, invitedEvents: guests[0].invited_events || ['event-sagai','event-wedding'] } })
@@ -425,6 +429,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (raw && sql && sessionSecret) await sql`DELETE FROM sessions WHERE id_hash=${digest('session', raw)}`
       res.setHeader('set-cookie', 'vd_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax')
       return res.status(204).end()
+    }
+    if(path==='devices'){
+      const guest=await currentGuest(req);if(!guest)return json(res,401,{error:'verified_session_required'})
+      const raw=cookies(req.headers.cookie).vd_session,currentHash=raw?digest('session',raw):''
+      if(req.method==='GET'){const rows=await sql`SELECT device_id,device_label,created_at,last_seen_at,expires_at,(id_hash=${currentHash}) current FROM sessions WHERE guest_id=${guest.id} AND expires_at>now() ORDER BY last_seen_at DESC`;return json(res,200,{devices:rows})}
+      if(req.method==='DELETE'){const id=String(req.query.id||'');const target=await sql`SELECT id_hash FROM sessions WHERE device_id=${id} AND guest_id=${guest.id}`;if(!target[0])return json(res,404,{error:'device_not_found'});if(String(target[0].id_hash)===currentHash)return json(res,409,{error:'use_logout_for_current_device'});await sql`DELETE FROM sessions WHERE device_id=${id} AND guest_id=${guest.id}`;return json(res,200,{status:'revoked'})}
     }
     if (path === 'planning/rsvp' && req.method === 'PUT') {
       if(!sql)return json(res,503,{error:'database_missing'})
